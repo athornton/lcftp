@@ -1,0 +1,36 @@
+[project]
+name = "lcftp-auth"
+description = "GitHub OAuth2 login and device tokens for LCFTP"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.14"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Natural Language :: English",
+    "Operating System :: POSIX",
+    "Typing :: Typed",
+]
+dependencies = [
+    "fastapi>=0.120",
+    "httpx>=0.28",
+    "itsdangerous>=2.2",
+    "lcftp-models",
+]
+dynamic = ["version"]
+
+[[project.authors]]
+name = "Adam Thornton"
+email = "athornton@gmail.com"
+
+[project.urls]
+Source = "https://github.com/athornton/lcftp"
+
+[build-system]
+requires = ["setuptools>=77", "setuptools_scm[toml]>=8"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools_scm]
+root = ".."
+
+[tool.ruff]
+extend = "../pyproject.toml"

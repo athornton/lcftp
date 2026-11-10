@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Los Cumbres For The People{% endblock %}</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 48rem; margin: 2rem auto; padding: 0 1rem; line-height: 1.5; }
+    table { border-collapse: collapse; } td, th { padding: .25rem .75rem; text-align: left; border-bottom: 1px solid #ccc; }
+    .token { font-family: monospace; background: #ffe; padding: .5rem; word-break: break-all; }
+    .error { color: #a00; }
+    label { display: block; margin-top: .5rem; }
+  </style>
+</head>
+<body>
+  <header>
+    <a href="/">Los Cumbres For The People</a>
+    {% if user %}
+      — {{ user.github_login }}
+      <form method="post" action="/auth/logout" style="display:inline"><button>Log out</button></form>
+    {% endif %}
+  </header>
+  <main>{% block content %}{% endblock %}</main>
+</body>
+</html>

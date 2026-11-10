@@ -1,0 +1,37 @@
+{
+ "_comment": "SYNTHETIC \u2014 shaped per alerce-lsst-spike.md; replace with recorded responses",
+ "items": [
+  {
+   "oid": 1001,
+   "meanra": 30.0,
+   "meandec": -5.0,
+   "firstmjd": 61350.01,
+   "lastmjd": 61353.01,
+   "n_det": 4
+  },
+  {
+   "oid": 1002,
+   "meanra": 45.5,
+   "meandec": 10.2,
+   "firstmjd": 61350.02,
+   "lastmjd": 61353.02,
+   "n_det": 4
+  },
+  {
+   "oid": 1003,
+   "meanra": 120.0,
+   "meandec": -60.0,
+   "firstmjd": 61350.03,
+   "lastmjd": 61353.03,
+   "n_det": 4
+  },
+  {
+   "oid": 1004,
+   "meanra": 300.1,
+   "meandec": 15.0,
+   "firstmjd": 61350.04,
+   "lastmjd": 61353.04,
+   "n_det": 4
+  }
+ ]
+}

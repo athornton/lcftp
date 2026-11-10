@@ -1,0 +1,215 @@
+{
+ "_comment": "SYNTHETIC",
+ "detections": {
+  "1001": [
+   {
+    "oid": 1001,
+    "measurement_id": 100102,
+    "mjd": 61351.01,
+    "band": 2,
+    "band_name": "r",
+    "psfFlux": 90000.0,
+    "psfFluxErr": 5000.0,
+    "ra": 30.0,
+    "dec": -5.0
+   },
+   {
+    "oid": 1001,
+    "measurement_id": 100100,
+    "mjd": 61353.01,
+    "band": 2,
+    "band_name": "r",
+    "psfFlux": 100000.0,
+    "psfFluxErr": 5000.0,
+    "ra": 30.0,
+    "dec": -5.0
+   },
+   {
+    "oid": 1001,
+    "measurement_id": 100101,
+    "mjd": 61352.01,
+    "band": 2,
+    "band_name": "r",
+    "psfFlux": 90000.0,
+    "psfFluxErr": 5000.0,
+    "ra": 30.0,
+    "dec": -5.0
+   }
+  ],
+  "1002": [
+   {
+    "oid": 1002,
+    "measurement_id": 100202,
+    "mjd": 61351.02,
+    "band": 2,
+    "band_name": "r",
+    "psfFlux": 22500.0,
+    "psfFluxErr": 1250.0,
+    "ra": 45.5,
+    "dec": 10.2
+   },
+   {
+    "oid": 1002,
+    "measurement_id": 100200,
+    "mjd": 61353.02,
+    "band": 2,
+    "band_name": "r",
+    "psfFlux": 25000.0,
+    "psfFluxErr": 1250.0,
+    "ra": 45.5,
+    "dec": 10.2
+   },
+   {
+    "oid": 1002,
+    "measurement_id": 100201,
+    "mjd": 61352.02,
+    "band": 2,
+    "band_name": "r",
+    "psfFlux": 22500.0,
+    "psfFluxErr": 1250.0,
+    "ra": 45.5,
+    "dec": 10.2
+   }
+  ],
+  "1003": [
+   {
+    "oid": 1003,
+    "measurement_id": 100302,
+    "mjd": 61351.03,
+    "band": 2,
+    "band_name": "r",
+    "psfFlux": 900000.0,
+    "psfFluxErr": 50000.0,
+    "ra": 120.0,
+    "dec": -60.0
+   },
+   {
+    "oid": 1003,
+    "measurement_id": 100300,
+    "mjd": 61353.03,
+    "band": 2,
+    "band_name": "r",
+    "psfFlux": 1000000.0,
+    "psfFluxErr": 50000.0,
+    "ra": 120.0,
+    "dec": -60.0
+   },
+   {
+    "oid": 1003,
+    "measurement_id": 100301,
+    "mjd": 61352.03,
+    "band": 2,
+    "band_name": "r",
+    "psfFlux": 900000.0,
+    "psfFluxErr": 50000.0,
+    "ra": 120.0,
+    "dec": -60.0
+   }
+  ],
+  "1004": [
+   {
+    "oid": 1004,
+    "measurement_id": 100402,
+    "mjd": 61351.04,
+    "band": 2,
+    "band_name": "r",
+    "psfFlux": 450.0,
+    "psfFluxErr": 25.0,
+    "ra": 300.1,
+    "dec": 15.0
+   },
+   {
+    "oid": 1004,
+    "measurement_id": 100400,
+    "mjd": 61353.04,
+    "band": 2,
+    "band_name": "r",
+    "psfFlux": 500.0,
+    "psfFluxErr": 25.0,
+    "ra": 300.1,
+    "dec": 15.0
+   },
+   {
+    "oid": 1004,
+    "measurement_id": 100401,
+    "mjd": 61352.04,
+    "band": 2,
+    "band_name": "r",
+    "psfFlux": 450.0,
+    "psfFluxErr": 25.0,
+    "ra": 300.1,
+    "dec": 15.0
+   }
+  ],
+  "1005": [
+   {
+    "oid": 1005,
+    "measurement_id": 100502,
+    "mjd": 61351.05,
+    "band": 2,
+    "band_name": "r",
+    "psfFlux": -4.5,
+    "psfFluxErr": -0.25,
+    "ra": 10.0,
+    "dec": 0.0
+   },
+   {
+    "oid": 1005,
+    "measurement_id": 100500,
+    "mjd": 61353.05,
+    "band": 2,
+    "band_name": "r",
+    "psfFlux": -5.0,
+    "psfFluxErr": -0.25,
+    "ra": 10.0,
+    "dec": 0.0
+   },
+   {
+    "oid": 1005,
+    "measurement_id": 100501,
+    "mjd": 61352.05,
+    "band": 2,
+    "band_name": "r",
+    "psfFlux": -4.5,
+    "psfFluxErr": -0.25,
+    "ra": 10.0,
+    "dec": 0.0
+   }
+  ],
+  "1006": [
+   {
+    "oid": 1006,
+    "measurement_id": 100602,
+    "mjd": 61351.06,
+    "band": 2,
+    "band_name": "r",
+    "psfFlux": 36000.0,
+    "psfFluxErr": 2000.0,
+    "ra": 200.0,
+    "dec": -20.0
+   },
+   {
+    "oid": 1006,
+    "measurement_id": 100600,
+    "mjd": 61353.06,
+    "band": 2,
+    "band_name": "r",
+    "psfFlux": 40000.0,
+    "psfFluxErr": 2000.0,
+    "ra": 200.0,
+    "dec": -20.0
+   },
+   {
+    "oid": 1006,
+    "measurement_id": 100601,
+    "mjd": 61352.06,
+    "band": 2,
+    "band_name": "r",
+    "psfFlux": 36000.0,
+    "psfFluxErr": 2000.0,
+    "ra": 200.0,
+    "dec": -20.0
+   }
+  ]
+ }
+}

@@ -1,0 +1,2105 @@
+{
+  "AvailabilityWindow": {
+    "$defs": {
+      "UtcDatetime": {
+        "format": "date-time",
+        "type": "string"
+      }
+    },
+    "additionalProperties": false,
+    "description": "A period during which an observatory may be used.",
+    "properties": {
+      "end": {
+        "$ref": "#/$defs/UtcDatetime"
+      },
+      "start": {
+        "$ref": "#/$defs/UtcDatetime"
+      }
+    },
+    "required": [
+      "start",
+      "end"
+    ],
+    "title": "AvailabilityWindow",
+    "type": "object"
+  },
+  "BrokerRef": {
+    "additionalProperties": false,
+    "description": "Identity of an object at a particular broker.",
+    "properties": {
+      "broker": {
+        "minLength": 1,
+        "title": "Broker",
+        "type": "string"
+      },
+      "broker_object_id": {
+        "minLength": 1,
+        "title": "Broker Object Id",
+        "type": "string"
+      }
+    },
+    "required": [
+      "broker",
+      "broker_object_id"
+    ],
+    "title": "BrokerRef",
+    "type": "object"
+  },
+  "Candidate": {
+    "$defs": {
+      "BrokerRef": {
+        "additionalProperties": false,
+        "description": "Identity of an object at a particular broker.",
+        "properties": {
+          "broker": {
+            "minLength": 1,
+            "title": "Broker",
+            "type": "string"
+          },
+          "broker_object_id": {
+            "minLength": 1,
+            "title": "Broker Object Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "broker",
+          "broker_object_id"
+        ],
+        "title": "BrokerRef",
+        "type": "object"
+      },
+      "UtcDatetime": {
+        "format": "date-time",
+        "type": "string"
+      }
+    },
+    "additionalProperties": false,
+    "description": "A potential follow-up target, normalised across brokers.",
+    "properties": {
+      "band": {
+        "title": "Band",
+        "type": "string"
+      },
+      "classification": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Classification"
+      },
+      "dec": {
+        "maximum": 90,
+        "minimum": -90,
+        "title": "Dec",
+        "type": "number"
+      },
+      "dia_object_id": {
+        "title": "Dia Object Id",
+        "type": "integer"
+      },
+      "first_seen": {
+        "$ref": "#/$defs/UtcDatetime"
+      },
+      "last_updated": {
+        "$ref": "#/$defs/UtcDatetime"
+      },
+      "latest_alert_id": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Latest Alert Id"
+      },
+      "latest_alert_time": {
+        "$ref": "#/$defs/UtcDatetime"
+      },
+      "mag": {
+        "title": "Mag",
+        "type": "number"
+      },
+      "ra": {
+        "exclusiveMaximum": 360,
+        "minimum": 0,
+        "title": "Ra",
+        "type": "number"
+      },
+      "score": {
+        "anyOf": [
+          {
+            "type": "number"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Score"
+      },
+      "sources": {
+        "items": {
+          "$ref": "#/$defs/BrokerRef"
+        },
+        "minItems": 1,
+        "title": "Sources",
+        "type": "array"
+      }
+    },
+    "required": [
+      "dia_object_id",
+      "sources",
+      "latest_alert_id",
+      "latest_alert_time",
+      "ra",
+      "dec",
+      "mag",
+      "band",
+      "first_seen",
+      "last_updated"
+    ],
+    "title": "Candidate",
+    "type": "object"
+  },
+  "Checksums": {
+    "additionalProperties": false,
+    "description": "Checksums of a frame file.",
+    "properties": {
+      "crc32c_b64": {
+        "title": "Crc32C B64",
+        "type": "string"
+      },
+      "md5_b64": {
+        "title": "Md5 B64",
+        "type": "string"
+      },
+      "sha256": {
+        "pattern": "^[0-9a-f]{64}$",
+        "title": "Sha256",
+        "type": "string"
+      }
+    },
+    "required": [
+      "sha256",
+      "md5_b64",
+      "crc32c_b64"
+    ],
+    "title": "Checksums",
+    "type": "object"
+  },
+  "ErrorResponse": {
+    "$defs": {
+      "ErrorCode": {
+        "description": "Stable, machine-readable error codes.",
+        "enum": [
+          "not_authenticated",
+          "forbidden",
+          "not_found",
+          "invalid_request",
+          "plan_superseded",
+          "frame_not_in_plan",
+          "frame_too_large",
+          "conflict",
+          "internal"
+        ],
+        "title": "ErrorCode",
+        "type": "string"
+      },
+      "JsonValue": {}
+    },
+    "additionalProperties": false,
+    "description": "Body of every error response from the LCFTP API.",
+    "properties": {
+      "code": {
+        "$ref": "#/$defs/ErrorCode"
+      },
+      "detail": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/JsonValue"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "message": {
+        "title": "Message",
+        "type": "string"
+      }
+    },
+    "required": [
+      "code",
+      "message"
+    ],
+    "title": "ErrorResponse",
+    "type": "object"
+  },
+  "ExposureHint": {
+    "additionalProperties": false,
+    "description": "Suggested exposure; drivers decide how to achieve it.",
+    "properties": {
+      "target_snr": {
+        "anyOf": [
+          {
+            "exclusiveMinimum": 0,
+            "type": "number"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Target Snr"
+      },
+      "total_exposure_s": {
+        "anyOf": [
+          {
+            "exclusiveMinimum": 0,
+            "type": "number"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Total Exposure S"
+      }
+    },
+    "title": "ExposureHint",
+    "type": "object"
+  },
+  "FilterSpec": {
+    "additionalProperties": false,
+    "description": "A filter available at an observatory.",
+    "properties": {
+      "name": {
+        "minLength": 1,
+        "title": "Name",
+        "type": "string"
+      },
+      "wavelength_nm": {
+        "exclusiveMinimum": 0,
+        "title": "Wavelength Nm",
+        "type": "number"
+      }
+    },
+    "required": [
+      "name",
+      "wavelength_nm"
+    ],
+    "title": "FilterSpec",
+    "type": "object"
+  },
+  "FrameRecord": {
+    "$defs": {
+      "Checksums": {
+        "additionalProperties": false,
+        "description": "Checksums of a frame file.",
+        "properties": {
+          "crc32c_b64": {
+            "title": "Crc32C B64",
+            "type": "string"
+          },
+          "md5_b64": {
+            "title": "Md5 B64",
+            "type": "string"
+          },
+          "sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Sha256",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sha256",
+          "md5_b64",
+          "crc32c_b64"
+        ],
+        "title": "Checksums",
+        "type": "object"
+      },
+      "JsonValue": {},
+      "UtcDatetime": {
+        "format": "date-time",
+        "type": "string"
+      }
+    },
+    "additionalProperties": false,
+    "description": "Provenance record for one captured frame.",
+    "properties": {
+      "alert_id": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Alert Id"
+      },
+      "checksums": {
+        "$ref": "#/$defs/Checksums"
+      },
+      "dec": {
+        "title": "Dec",
+        "type": "number"
+      },
+      "dia_object_id": {
+        "title": "Dia Object Id",
+        "type": "integer"
+      },
+      "driver": {
+        "title": "Driver",
+        "type": "string"
+      },
+      "driver_metadata": {
+        "additionalProperties": {
+          "$ref": "#/$defs/JsonValue"
+        },
+        "title": "Driver Metadata",
+        "type": "object"
+      },
+      "driver_version": {
+        "title": "Driver Version",
+        "type": "string"
+      },
+      "exposure_s": {
+        "exclusiveMinimum": 0,
+        "title": "Exposure S",
+        "type": "number"
+      },
+      "filter": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Filter"
+      },
+      "frame_id": {
+        "format": "uuid",
+        "title": "Frame Id",
+        "type": "string"
+      },
+      "item_id": {
+        "title": "Item Id",
+        "type": "string"
+      },
+      "obs_start": {
+        "$ref": "#/$defs/UtcDatetime"
+      },
+      "observatory_id": {
+        "title": "Observatory Id",
+        "type": "string"
+      },
+      "plan_id": {
+        "title": "Plan Id",
+        "type": "string"
+      },
+      "ra": {
+        "title": "Ra",
+        "type": "number"
+      },
+      "size_bytes": {
+        "exclusiveMinimum": 0,
+        "title": "Size Bytes",
+        "type": "integer"
+      }
+    },
+    "required": [
+      "frame_id",
+      "plan_id",
+      "item_id",
+      "observatory_id",
+      "dia_object_id",
+      "alert_id",
+      "obs_start",
+      "exposure_s",
+      "filter",
+      "driver",
+      "driver_version",
+      "ra",
+      "dec",
+      "size_bytes",
+      "checksums"
+    ],
+    "title": "FrameRecord",
+    "type": "object"
+  },
+  "ItemOutcome": {
+    "$defs": {
+      "OutcomeReason": {
+        "description": "Why a plan item ended the way it did.",
+        "enum": [
+          "ok",
+          "window_passed",
+          "stopped",
+          "driver_error",
+          "timeout",
+          "weather",
+          "incomplete",
+          "not_visible",
+          "other"
+        ],
+        "title": "OutcomeReason",
+        "type": "string"
+      },
+      "OutcomeStatus": {
+        "enum": [
+          "observed",
+          "skipped",
+          "failed"
+        ],
+        "type": "string"
+      },
+      "UtcDatetime": {
+        "format": "date-time",
+        "type": "string"
+      }
+    },
+    "additionalProperties": false,
+    "description": "The result of attempting one plan item.",
+    "properties": {
+      "detail": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Detail"
+      },
+      "finished_at": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/UtcDatetime"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "item_id": {
+        "title": "Item Id",
+        "type": "string"
+      },
+      "plan_id": {
+        "title": "Plan Id",
+        "type": "string"
+      },
+      "reason": {
+        "$ref": "#/$defs/OutcomeReason"
+      },
+      "started_at": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/UtcDatetime"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "status": {
+        "$ref": "#/$defs/OutcomeStatus"
+      }
+    },
+    "required": [
+      "plan_id",
+      "item_id",
+      "status",
+      "reason",
+      "started_at",
+      "finished_at"
+    ],
+    "title": "ItemOutcome",
+    "type": "object"
+  },
+  "ObservationPlan": {
+    "$defs": {
+      "AvailabilityWindow": {
+        "additionalProperties": false,
+        "description": "A period during which an observatory may be used.",
+        "properties": {
+          "end": {
+            "$ref": "#/$defs/UtcDatetime"
+          },
+          "start": {
+            "$ref": "#/$defs/UtcDatetime"
+          }
+        },
+        "required": [
+          "start",
+          "end"
+        ],
+        "title": "AvailabilityWindow",
+        "type": "object"
+      },
+      "BrokerRef": {
+        "additionalProperties": false,
+        "description": "Identity of an object at a particular broker.",
+        "properties": {
+          "broker": {
+            "minLength": 1,
+            "title": "Broker",
+            "type": "string"
+          },
+          "broker_object_id": {
+            "minLength": 1,
+            "title": "Broker Object Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "broker",
+          "broker_object_id"
+        ],
+        "title": "BrokerRef",
+        "type": "object"
+      },
+      "Candidate": {
+        "additionalProperties": false,
+        "description": "A potential follow-up target, normalised across brokers.",
+        "properties": {
+          "band": {
+            "title": "Band",
+            "type": "string"
+          },
+          "classification": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Classification"
+          },
+          "dec": {
+            "maximum": 90,
+            "minimum": -90,
+            "title": "Dec",
+            "type": "number"
+          },
+          "dia_object_id": {
+            "title": "Dia Object Id",
+            "type": "integer"
+          },
+          "first_seen": {
+            "$ref": "#/$defs/UtcDatetime"
+          },
+          "last_updated": {
+            "$ref": "#/$defs/UtcDatetime"
+          },
+          "latest_alert_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Alert Id"
+          },
+          "latest_alert_time": {
+            "$ref": "#/$defs/UtcDatetime"
+          },
+          "mag": {
+            "title": "Mag",
+            "type": "number"
+          },
+          "ra": {
+            "exclusiveMaximum": 360,
+            "minimum": 0,
+            "title": "Ra",
+            "type": "number"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Score"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/$defs/BrokerRef"
+            },
+            "minItems": 1,
+            "title": "Sources",
+            "type": "array"
+          }
+        },
+        "required": [
+          "dia_object_id",
+          "sources",
+          "latest_alert_id",
+          "latest_alert_time",
+          "ra",
+          "dec",
+          "mag",
+          "band",
+          "first_seen",
+          "last_updated"
+        ],
+        "title": "Candidate",
+        "type": "object"
+      },
+      "ExposureHint": {
+        "additionalProperties": false,
+        "description": "Suggested exposure; drivers decide how to achieve it.",
+        "properties": {
+          "target_snr": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Target Snr"
+          },
+          "total_exposure_s": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Total Exposure S"
+          }
+        },
+        "title": "ExposureHint",
+        "type": "object"
+      },
+      "PlanItem": {
+        "additionalProperties": false,
+        "description": "One target to observe: intent, not telescope commands.",
+        "properties": {
+          "candidate": {
+            "$ref": "#/$defs/Candidate"
+          },
+          "exposure_hint": {
+            "$ref": "#/$defs/ExposureHint"
+          },
+          "item_id": {
+            "minLength": 1,
+            "title": "Item Id",
+            "type": "string"
+          },
+          "not_after": {
+            "$ref": "#/$defs/UtcDatetime"
+          },
+          "not_before": {
+            "$ref": "#/$defs/UtcDatetime"
+          },
+          "priority": {
+            "minimum": 0,
+            "title": "Priority",
+            "type": "integer"
+          },
+          "suggested_filter": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suggested Filter"
+          }
+        },
+        "required": [
+          "item_id",
+          "candidate",
+          "not_before",
+          "not_after",
+          "suggested_filter",
+          "exposure_hint",
+          "priority"
+        ],
+        "title": "PlanItem",
+        "type": "object"
+      },
+      "UtcDatetime": {
+        "format": "date-time",
+        "type": "string"
+      }
+    },
+    "additionalProperties": false,
+    "description": "An immutable plan for one observatory and availability window.",
+    "properties": {
+      "candidates_as_of": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/UtcDatetime"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "created_at": {
+        "$ref": "#/$defs/UtcDatetime"
+      },
+      "items": {
+        "items": {
+          "$ref": "#/$defs/PlanItem"
+        },
+        "title": "Items",
+        "type": "array"
+      },
+      "observatory_id": {
+        "title": "Observatory Id",
+        "type": "string"
+      },
+      "plan_id": {
+        "title": "Plan Id",
+        "type": "string"
+      },
+      "planner_version": {
+        "title": "Planner Version",
+        "type": "string"
+      },
+      "window": {
+        "$ref": "#/$defs/AvailabilityWindow"
+      }
+    },
+    "required": [
+      "plan_id",
+      "observatory_id",
+      "window",
+      "created_at",
+      "candidates_as_of",
+      "planner_version",
+      "items"
+    ],
+    "title": "ObservationPlan",
+    "type": "object"
+  },
+  "ObservatoryCreate": {
+    "$defs": {
+      "FilterSpec": {
+        "additionalProperties": false,
+        "description": "A filter available at an observatory.",
+        "properties": {
+          "name": {
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "wavelength_nm": {
+            "exclusiveMinimum": 0,
+            "title": "Wavelength Nm",
+            "type": "number"
+          }
+        },
+        "required": [
+          "name",
+          "wavelength_nm"
+        ],
+        "title": "FilterSpec",
+        "type": "object"
+      },
+      "ObservingConstraints": {
+        "additionalProperties": false,
+        "description": "Per-observatory limits applied when planning.",
+        "properties": {
+          "max_airmass": {
+            "default": 2.0,
+            "minimum": 1,
+            "title": "Max Airmass",
+            "type": "number"
+          },
+          "min_altitude_deg": {
+            "default": 30.0,
+            "maximum": 90,
+            "minimum": 0,
+            "title": "Min Altitude Deg",
+            "type": "number"
+          },
+          "min_moon_separation_deg": {
+            "default": 30.0,
+            "maximum": 180,
+            "minimum": 0,
+            "title": "Min Moon Separation Deg",
+            "type": "number"
+          }
+        },
+        "title": "ObservingConstraints",
+        "type": "object"
+      },
+      "SiteLocation": {
+        "additionalProperties": false,
+        "description": "Geographic location of an observatory.",
+        "properties": {
+          "elevation_m": {
+            "title": "Elevation M",
+            "type": "number"
+          },
+          "latitude": {
+            "maximum": 90,
+            "minimum": -90,
+            "title": "Latitude",
+            "type": "number"
+          },
+          "longitude": {
+            "maximum": 180,
+            "minimum": -180,
+            "title": "Longitude",
+            "type": "number"
+          },
+          "timezone": {
+            "title": "Timezone",
+            "type": "string"
+          }
+        },
+        "required": [
+          "latitude",
+          "longitude",
+          "elevation_m",
+          "timezone"
+        ],
+        "title": "SiteLocation",
+        "type": "object"
+      }
+    },
+    "additionalProperties": false,
+    "description": "Data supplied by a user to register an observatory.",
+    "properties": {
+      "aperture_m": {
+        "exclusiveMinimum": 0,
+        "title": "Aperture M",
+        "type": "number"
+      },
+      "constraints": {
+        "$ref": "#/$defs/ObservingConstraints"
+      },
+      "driver": {
+        "default": "simulated",
+        "minLength": 1,
+        "title": "Driver",
+        "type": "string"
+      },
+      "filters": {
+        "items": {
+          "$ref": "#/$defs/FilterSpec"
+        },
+        "title": "Filters",
+        "type": "array"
+      },
+      "fov_arcmin": {
+        "exclusiveMinimum": 0,
+        "title": "Fov Arcmin",
+        "type": "number"
+      },
+      "limiting_mag": {
+        "maximum": 30,
+        "minimum": 5,
+        "title": "Limiting Mag",
+        "type": "number"
+      },
+      "name": {
+        "maxLength": 100,
+        "minLength": 1,
+        "title": "Name",
+        "type": "string"
+      },
+      "site": {
+        "$ref": "#/$defs/SiteLocation"
+      }
+    },
+    "required": [
+      "name",
+      "site",
+      "aperture_m",
+      "limiting_mag",
+      "fov_arcmin"
+    ],
+    "title": "ObservatoryCreate",
+    "type": "object"
+  },
+  "ObservatoryProfile": {
+    "$defs": {
+      "FilterSpec": {
+        "additionalProperties": false,
+        "description": "A filter available at an observatory.",
+        "properties": {
+          "name": {
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "wavelength_nm": {
+            "exclusiveMinimum": 0,
+            "title": "Wavelength Nm",
+            "type": "number"
+          }
+        },
+        "required": [
+          "name",
+          "wavelength_nm"
+        ],
+        "title": "FilterSpec",
+        "type": "object"
+      },
+      "ObservingConstraints": {
+        "additionalProperties": false,
+        "description": "Per-observatory limits applied when planning.",
+        "properties": {
+          "max_airmass": {
+            "default": 2.0,
+            "minimum": 1,
+            "title": "Max Airmass",
+            "type": "number"
+          },
+          "min_altitude_deg": {
+            "default": 30.0,
+            "maximum": 90,
+            "minimum": 0,
+            "title": "Min Altitude Deg",
+            "type": "number"
+          },
+          "min_moon_separation_deg": {
+            "default": 30.0,
+            "maximum": 180,
+            "minimum": 0,
+            "title": "Min Moon Separation Deg",
+            "type": "number"
+          }
+        },
+        "title": "ObservingConstraints",
+        "type": "object"
+      },
+      "SiteLocation": {
+        "additionalProperties": false,
+        "description": "Geographic location of an observatory.",
+        "properties": {
+          "elevation_m": {
+            "title": "Elevation M",
+            "type": "number"
+          },
+          "latitude": {
+            "maximum": 90,
+            "minimum": -90,
+            "title": "Latitude",
+            "type": "number"
+          },
+          "longitude": {
+            "maximum": 180,
+            "minimum": -180,
+            "title": "Longitude",
+            "type": "number"
+          },
+          "timezone": {
+            "title": "Timezone",
+            "type": "string"
+          }
+        },
+        "required": [
+          "latitude",
+          "longitude",
+          "elevation_m",
+          "timezone"
+        ],
+        "title": "SiteLocation",
+        "type": "object"
+      }
+    },
+    "additionalProperties": false,
+    "description": "A registered observatory.",
+    "properties": {
+      "aperture_m": {
+        "exclusiveMinimum": 0,
+        "title": "Aperture M",
+        "type": "number"
+      },
+      "constraints": {
+        "$ref": "#/$defs/ObservingConstraints"
+      },
+      "driver": {
+        "default": "simulated",
+        "minLength": 1,
+        "title": "Driver",
+        "type": "string"
+      },
+      "filters": {
+        "items": {
+          "$ref": "#/$defs/FilterSpec"
+        },
+        "title": "Filters",
+        "type": "array"
+      },
+      "fov_arcmin": {
+        "exclusiveMinimum": 0,
+        "title": "Fov Arcmin",
+        "type": "number"
+      },
+      "id": {
+        "title": "Id",
+        "type": "string"
+      },
+      "limiting_mag": {
+        "maximum": 30,
+        "minimum": 5,
+        "title": "Limiting Mag",
+        "type": "number"
+      },
+      "name": {
+        "maxLength": 100,
+        "minLength": 1,
+        "title": "Name",
+        "type": "string"
+      },
+      "owner": {
+        "title": "Owner",
+        "type": "string"
+      },
+      "site": {
+        "$ref": "#/$defs/SiteLocation"
+      }
+    },
+    "required": [
+      "name",
+      "site",
+      "aperture_m",
+      "limiting_mag",
+      "fov_arcmin",
+      "id",
+      "owner"
+    ],
+    "title": "ObservatoryProfile",
+    "type": "object"
+  },
+  "ObservingConstraints": {
+    "additionalProperties": false,
+    "description": "Per-observatory limits applied when planning.",
+    "properties": {
+      "max_airmass": {
+        "default": 2.0,
+        "minimum": 1,
+        "title": "Max Airmass",
+        "type": "number"
+      },
+      "min_altitude_deg": {
+        "default": 30.0,
+        "maximum": 90,
+        "minimum": 0,
+        "title": "Min Altitude Deg",
+        "type": "number"
+      },
+      "min_moon_separation_deg": {
+        "default": 30.0,
+        "maximum": 180,
+        "minimum": 0,
+        "title": "Min Moon Separation Deg",
+        "type": "number"
+      }
+    },
+    "title": "ObservingConstraints",
+    "type": "object"
+  },
+  "PlanItem": {
+    "$defs": {
+      "BrokerRef": {
+        "additionalProperties": false,
+        "description": "Identity of an object at a particular broker.",
+        "properties": {
+          "broker": {
+            "minLength": 1,
+            "title": "Broker",
+            "type": "string"
+          },
+          "broker_object_id": {
+            "minLength": 1,
+            "title": "Broker Object Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "broker",
+          "broker_object_id"
+        ],
+        "title": "BrokerRef",
+        "type": "object"
+      },
+      "Candidate": {
+        "additionalProperties": false,
+        "description": "A potential follow-up target, normalised across brokers.",
+        "properties": {
+          "band": {
+            "title": "Band",
+            "type": "string"
+          },
+          "classification": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Classification"
+          },
+          "dec": {
+            "maximum": 90,
+            "minimum": -90,
+            "title": "Dec",
+            "type": "number"
+          },
+          "dia_object_id": {
+            "title": "Dia Object Id",
+            "type": "integer"
+          },
+          "first_seen": {
+            "$ref": "#/$defs/UtcDatetime"
+          },
+          "last_updated": {
+            "$ref": "#/$defs/UtcDatetime"
+          },
+          "latest_alert_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Alert Id"
+          },
+          "latest_alert_time": {
+            "$ref": "#/$defs/UtcDatetime"
+          },
+          "mag": {
+            "title": "Mag",
+            "type": "number"
+          },
+          "ra": {
+            "exclusiveMaximum": 360,
+            "minimum": 0,
+            "title": "Ra",
+            "type": "number"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Score"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/$defs/BrokerRef"
+            },
+            "minItems": 1,
+            "title": "Sources",
+            "type": "array"
+          }
+        },
+        "required": [
+          "dia_object_id",
+          "sources",
+          "latest_alert_id",
+          "latest_alert_time",
+          "ra",
+          "dec",
+          "mag",
+          "band",
+          "first_seen",
+          "last_updated"
+        ],
+        "title": "Candidate",
+        "type": "object"
+      },
+      "ExposureHint": {
+        "additionalProperties": false,
+        "description": "Suggested exposure; drivers decide how to achieve it.",
+        "properties": {
+          "target_snr": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Target Snr"
+          },
+          "total_exposure_s": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Total Exposure S"
+          }
+        },
+        "title": "ExposureHint",
+        "type": "object"
+      },
+      "UtcDatetime": {
+        "format": "date-time",
+        "type": "string"
+      }
+    },
+    "additionalProperties": false,
+    "description": "One target to observe: intent, not telescope commands.",
+    "properties": {
+      "candidate": {
+        "$ref": "#/$defs/Candidate"
+      },
+      "exposure_hint": {
+        "$ref": "#/$defs/ExposureHint"
+      },
+      "item_id": {
+        "minLength": 1,
+        "title": "Item Id",
+        "type": "string"
+      },
+      "not_after": {
+        "$ref": "#/$defs/UtcDatetime"
+      },
+      "not_before": {
+        "$ref": "#/$defs/UtcDatetime"
+      },
+      "priority": {
+        "minimum": 0,
+        "title": "Priority",
+        "type": "integer"
+      },
+      "suggested_filter": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Suggested Filter"
+      }
+    },
+    "required": [
+      "item_id",
+      "candidate",
+      "not_before",
+      "not_after",
+      "suggested_filter",
+      "exposure_hint",
+      "priority"
+    ],
+    "title": "PlanItem",
+    "type": "object"
+  },
+  "PlanStatus": {
+    "$defs": {
+      "AvailabilityWindow": {
+        "additionalProperties": false,
+        "description": "A period during which an observatory may be used.",
+        "properties": {
+          "end": {
+            "$ref": "#/$defs/UtcDatetime"
+          },
+          "start": {
+            "$ref": "#/$defs/UtcDatetime"
+          }
+        },
+        "required": [
+          "start",
+          "end"
+        ],
+        "title": "AvailabilityWindow",
+        "type": "object"
+      },
+      "BrokerRef": {
+        "additionalProperties": false,
+        "description": "Identity of an object at a particular broker.",
+        "properties": {
+          "broker": {
+            "minLength": 1,
+            "title": "Broker",
+            "type": "string"
+          },
+          "broker_object_id": {
+            "minLength": 1,
+            "title": "Broker Object Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "broker",
+          "broker_object_id"
+        ],
+        "title": "BrokerRef",
+        "type": "object"
+      },
+      "Candidate": {
+        "additionalProperties": false,
+        "description": "A potential follow-up target, normalised across brokers.",
+        "properties": {
+          "band": {
+            "title": "Band",
+            "type": "string"
+          },
+          "classification": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Classification"
+          },
+          "dec": {
+            "maximum": 90,
+            "minimum": -90,
+            "title": "Dec",
+            "type": "number"
+          },
+          "dia_object_id": {
+            "title": "Dia Object Id",
+            "type": "integer"
+          },
+          "first_seen": {
+            "$ref": "#/$defs/UtcDatetime"
+          },
+          "last_updated": {
+            "$ref": "#/$defs/UtcDatetime"
+          },
+          "latest_alert_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Alert Id"
+          },
+          "latest_alert_time": {
+            "$ref": "#/$defs/UtcDatetime"
+          },
+          "mag": {
+            "title": "Mag",
+            "type": "number"
+          },
+          "ra": {
+            "exclusiveMaximum": 360,
+            "minimum": 0,
+            "title": "Ra",
+            "type": "number"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Score"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/$defs/BrokerRef"
+            },
+            "minItems": 1,
+            "title": "Sources",
+            "type": "array"
+          }
+        },
+        "required": [
+          "dia_object_id",
+          "sources",
+          "latest_alert_id",
+          "latest_alert_time",
+          "ra",
+          "dec",
+          "mag",
+          "band",
+          "first_seen",
+          "last_updated"
+        ],
+        "title": "Candidate",
+        "type": "object"
+      },
+      "ExposureHint": {
+        "additionalProperties": false,
+        "description": "Suggested exposure; drivers decide how to achieve it.",
+        "properties": {
+          "target_snr": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Target Snr"
+          },
+          "total_exposure_s": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Total Exposure S"
+          }
+        },
+        "title": "ExposureHint",
+        "type": "object"
+      },
+      "ObservationPlan": {
+        "additionalProperties": false,
+        "description": "An immutable plan for one observatory and availability window.",
+        "properties": {
+          "candidates_as_of": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/UtcDatetime"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "created_at": {
+            "$ref": "#/$defs/UtcDatetime"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/$defs/PlanItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "observatory_id": {
+            "title": "Observatory Id",
+            "type": "string"
+          },
+          "plan_id": {
+            "title": "Plan Id",
+            "type": "string"
+          },
+          "planner_version": {
+            "title": "Planner Version",
+            "type": "string"
+          },
+          "window": {
+            "$ref": "#/$defs/AvailabilityWindow"
+          }
+        },
+        "required": [
+          "plan_id",
+          "observatory_id",
+          "window",
+          "created_at",
+          "candidates_as_of",
+          "planner_version",
+          "items"
+        ],
+        "title": "ObservationPlan",
+        "type": "object"
+      },
+      "PlanItem": {
+        "additionalProperties": false,
+        "description": "One target to observe: intent, not telescope commands.",
+        "properties": {
+          "candidate": {
+            "$ref": "#/$defs/Candidate"
+          },
+          "exposure_hint": {
+            "$ref": "#/$defs/ExposureHint"
+          },
+          "item_id": {
+            "minLength": 1,
+            "title": "Item Id",
+            "type": "string"
+          },
+          "not_after": {
+            "$ref": "#/$defs/UtcDatetime"
+          },
+          "not_before": {
+            "$ref": "#/$defs/UtcDatetime"
+          },
+          "priority": {
+            "minimum": 0,
+            "title": "Priority",
+            "type": "integer"
+          },
+          "suggested_filter": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suggested Filter"
+          }
+        },
+        "required": [
+          "item_id",
+          "candidate",
+          "not_before",
+          "not_after",
+          "suggested_filter",
+          "exposure_hint",
+          "priority"
+        ],
+        "title": "PlanItem",
+        "type": "object"
+      },
+      "UtcDatetime": {
+        "format": "date-time",
+        "type": "string"
+      }
+    },
+    "additionalProperties": false,
+    "description": "A plan together with whether it has been replaced.",
+    "properties": {
+      "plan": {
+        "$ref": "#/$defs/ObservationPlan"
+      },
+      "superseded_by": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Superseded By"
+      }
+    },
+    "required": [
+      "plan",
+      "superseded_by"
+    ],
+    "title": "PlanStatus",
+    "type": "object"
+  },
+  "SignedUpload": {
+    "$defs": {
+      "UtcDatetime": {
+        "format": "date-time",
+        "type": "string"
+      }
+    },
+    "additionalProperties": false,
+    "description": "Where and how to upload one frame.",
+    "properties": {
+      "expires_at": {
+        "$ref": "#/$defs/UtcDatetime"
+      },
+      "frame_id": {
+        "format": "uuid",
+        "title": "Frame Id",
+        "type": "string"
+      },
+      "headers": {
+        "additionalProperties": {
+          "type": "string"
+        },
+        "title": "Headers",
+        "type": "object"
+      },
+      "method": {
+        "const": "PUT",
+        "default": "PUT",
+        "title": "Method",
+        "type": "string"
+      },
+      "url": {
+        "title": "Url",
+        "type": "string"
+      }
+    },
+    "required": [
+      "frame_id",
+      "url",
+      "headers",
+      "expires_at"
+    ],
+    "title": "SignedUpload",
+    "type": "object"
+  },
+  "SiteLocation": {
+    "additionalProperties": false,
+    "description": "Geographic location of an observatory.",
+    "properties": {
+      "elevation_m": {
+        "title": "Elevation M",
+        "type": "number"
+      },
+      "latitude": {
+        "maximum": 90,
+        "minimum": -90,
+        "title": "Latitude",
+        "type": "number"
+      },
+      "longitude": {
+        "maximum": 180,
+        "minimum": -180,
+        "title": "Longitude",
+        "type": "number"
+      },
+      "timezone": {
+        "title": "Timezone",
+        "type": "string"
+      }
+    },
+    "required": [
+      "latitude",
+      "longitude",
+      "elevation_m",
+      "timezone"
+    ],
+    "title": "SiteLocation",
+    "type": "object"
+  },
+  "UploadManifest": {
+    "$defs": {
+      "Checksums": {
+        "additionalProperties": false,
+        "description": "Checksums of a frame file.",
+        "properties": {
+          "crc32c_b64": {
+            "title": "Crc32C B64",
+            "type": "string"
+          },
+          "md5_b64": {
+            "title": "Md5 B64",
+            "type": "string"
+          },
+          "sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Sha256",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sha256",
+          "md5_b64",
+          "crc32c_b64"
+        ],
+        "title": "Checksums",
+        "type": "object"
+      },
+      "FrameRecord": {
+        "additionalProperties": false,
+        "description": "Provenance record for one captured frame.",
+        "properties": {
+          "alert_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Alert Id"
+          },
+          "checksums": {
+            "$ref": "#/$defs/Checksums"
+          },
+          "dec": {
+            "title": "Dec",
+            "type": "number"
+          },
+          "dia_object_id": {
+            "title": "Dia Object Id",
+            "type": "integer"
+          },
+          "driver": {
+            "title": "Driver",
+            "type": "string"
+          },
+          "driver_metadata": {
+            "additionalProperties": {
+              "$ref": "#/$defs/JsonValue"
+            },
+            "title": "Driver Metadata",
+            "type": "object"
+          },
+          "driver_version": {
+            "title": "Driver Version",
+            "type": "string"
+          },
+          "exposure_s": {
+            "exclusiveMinimum": 0,
+            "title": "Exposure S",
+            "type": "number"
+          },
+          "filter": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Filter"
+          },
+          "frame_id": {
+            "format": "uuid",
+            "title": "Frame Id",
+            "type": "string"
+          },
+          "item_id": {
+            "title": "Item Id",
+            "type": "string"
+          },
+          "obs_start": {
+            "$ref": "#/$defs/UtcDatetime"
+          },
+          "observatory_id": {
+            "title": "Observatory Id",
+            "type": "string"
+          },
+          "plan_id": {
+            "title": "Plan Id",
+            "type": "string"
+          },
+          "ra": {
+            "title": "Ra",
+            "type": "number"
+          },
+          "size_bytes": {
+            "exclusiveMinimum": 0,
+            "title": "Size Bytes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "frame_id",
+          "plan_id",
+          "item_id",
+          "observatory_id",
+          "dia_object_id",
+          "alert_id",
+          "obs_start",
+          "exposure_s",
+          "filter",
+          "driver",
+          "driver_version",
+          "ra",
+          "dec",
+          "size_bytes",
+          "checksums"
+        ],
+        "title": "FrameRecord",
+        "type": "object"
+      },
+      "ItemOutcome": {
+        "additionalProperties": false,
+        "description": "The result of attempting one plan item.",
+        "properties": {
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Detail"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/UtcDatetime"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "item_id": {
+            "title": "Item Id",
+            "type": "string"
+          },
+          "plan_id": {
+            "title": "Plan Id",
+            "type": "string"
+          },
+          "reason": {
+            "$ref": "#/$defs/OutcomeReason"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/UtcDatetime"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "$ref": "#/$defs/OutcomeStatus"
+          }
+        },
+        "required": [
+          "plan_id",
+          "item_id",
+          "status",
+          "reason",
+          "started_at",
+          "finished_at"
+        ],
+        "title": "ItemOutcome",
+        "type": "object"
+      },
+      "JsonValue": {},
+      "OutcomeReason": {
+        "description": "Why a plan item ended the way it did.",
+        "enum": [
+          "ok",
+          "window_passed",
+          "stopped",
+          "driver_error",
+          "timeout",
+          "weather",
+          "incomplete",
+          "not_visible",
+          "other"
+        ],
+        "title": "OutcomeReason",
+        "type": "string"
+      },
+      "OutcomeStatus": {
+        "enum": [
+          "observed",
+          "skipped",
+          "failed"
+        ],
+        "type": "string"
+      },
+      "UtcDatetime": {
+        "format": "date-time",
+        "type": "string"
+      }
+    },
+    "additionalProperties": false,
+    "description": "A batch of frames and outcomes a client wants to upload.",
+    "properties": {
+      "batch_id": {
+        "format": "uuid",
+        "title": "Batch Id",
+        "type": "string"
+      },
+      "frames": {
+        "items": {
+          "$ref": "#/$defs/FrameRecord"
+        },
+        "maxItems": 50,
+        "title": "Frames",
+        "type": "array"
+      },
+      "outcomes": {
+        "items": {
+          "$ref": "#/$defs/ItemOutcome"
+        },
+        "title": "Outcomes",
+        "type": "array"
+      }
+    },
+    "required": [
+      "batch_id",
+      "frames"
+    ],
+    "title": "UploadManifest",
+    "type": "object"
+  },
+  "UploadResult": {
+    "additionalProperties": false,
+    "description": "Server verification of an upload batch.",
+    "properties": {
+      "batch_id": {
+        "format": "uuid",
+        "title": "Batch Id",
+        "type": "string"
+      },
+      "mismatched": {
+        "items": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "title": "Mismatched",
+        "type": "array"
+      },
+      "missing": {
+        "items": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "title": "Missing",
+        "type": "array"
+      },
+      "received": {
+        "items": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "title": "Received",
+        "type": "array"
+      }
+    },
+    "required": [
+      "batch_id",
+      "received",
+      "missing",
+      "mismatched"
+    ],
+    "title": "UploadResult",
+    "type": "object"
+  },
+  "UploadTicket": {
+    "$defs": {
+      "SignedUpload": {
+        "additionalProperties": false,
+        "description": "Where and how to upload one frame.",
+        "properties": {
+          "expires_at": {
+            "$ref": "#/$defs/UtcDatetime"
+          },
+          "frame_id": {
+            "format": "uuid",
+            "title": "Frame Id",
+            "type": "string"
+          },
+          "headers": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Headers",
+            "type": "object"
+          },
+          "method": {
+            "const": "PUT",
+            "default": "PUT",
+            "title": "Method",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "frame_id",
+          "url",
+          "headers",
+          "expires_at"
+        ],
+        "title": "SignedUpload",
+        "type": "object"
+      },
+      "UtcDatetime": {
+        "format": "date-time",
+        "type": "string"
+      }
+    },
+    "additionalProperties": false,
+    "description": "Server response to an upload manifest.",
+    "properties": {
+      "already_received": {
+        "items": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "title": "Already Received",
+        "type": "array"
+      },
+      "batch_id": {
+        "format": "uuid",
+        "title": "Batch Id",
+        "type": "string"
+      },
+      "uploads": {
+        "items": {
+          "$ref": "#/$defs/SignedUpload"
+        },
+        "title": "Uploads",
+        "type": "array"
+      }
+    },
+    "required": [
+      "batch_id",
+      "uploads",
+      "already_received"
+    ],
+    "title": "UploadTicket",
+    "type": "object"
+  }
+}

@@ -1,0 +1,32 @@
+[project]
+name = "lcftp-models"
+description = "Shared client/server contract models for LCFTP"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.13"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Natural Language :: English",
+    "Operating System :: POSIX",
+    "Typing :: Typed",
+]
+dependencies = ["google-crc32c>=1.5", "pydantic>=2.12"]
+dynamic = ["version"]
+
+[[project.authors]]
+name = "Adam Thornton"
+email = "athornton@gmail.com"
+
+[project.urls]
+Source = "https://github.com/athornton/lcftp"
+
+[build-system]
+requires = ["setuptools>=77", "setuptools_scm[toml]>=8"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools_scm]
+root = ".."
+
+[tool.ruff]
+extend = "../pyproject.toml"
+target-version = "py313"

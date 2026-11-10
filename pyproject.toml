@@ -2,11 +2,9 @@
 name = "lcftp"
 description = "Los Cumbres For The People"
 readme = "README.md"
-license = { file = "LICENSE" }
+license = "MIT"
 requires-python = ">=3.14"
 classifiers = [
-    "License :: OSI Approved :: MIT License",
-    "Programming Language :: Python",
     "Programming Language :: Python",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.14",
@@ -15,11 +13,30 @@ classifiers = [
     "Typing :: Typed",
 ]
 dependencies = [
-    "alerce",
-    "astroplan",
-    "pydantic",
+    "alembic>=1.16",
+    "alerce>=2.4",
+    "astroplan>=0.10",
+    "astropy>=7.0",
+    "boto3>=1.40",
+    "asyncpg>=0.30",
+    "click>=8.2",
+    "fastapi>=0.120",
+    "google-cloud-storage>=3.0",
+    "jinja2>=3.1",
+    "lcftp-auth",
+    "lcftp-models",
+    "pydantic-settings>=2.10",
+    "python-multipart>=0.0.20",
+    "sqlalchemy[asyncio]>=2.0.40",
+    "uvicorn[standard]>=0.35",
 ]
 dynamic = ["version"]
+
+[project.scripts]
+lcftp = "lcftp.cli:main"
+
+[project.entry-points."lcftp.brokers"]
+alerce = "lcftp.brokers.alerce:create_broker"
 
 [[project.authors]]
 name = "Adam Thornton"
@@ -29,13 +46,21 @@ email = "athornton@gmail.com"
 Source = "https://github.com/athornton/lcftp"
 
 [build-system]
-requires = ["setuptools", "setuptools_scm[toml]"]
+requires = ["setuptools>=77", "setuptools_scm[toml]>=8"]
+build-backend = "setuptools.build_meta"
 
 [dependency-groups]
 dev = [
     "coverage[toml]",
     "pytest",
     "pytest-asyncio",
+    "ipykernel",
+    "lcftp-client",
+    "matplotlib",
+    "moto[server]>=5.1",
+    "nbmake",
+    "respx",
+    "testcontainers[postgres]",
 ]
 lint = [
     "pre-commit",
@@ -44,10 +69,13 @@ lint = [
 ]
 nox = [
     "nox",
-    "nox-uv"
+    "nox-uv",
 ]
 typing = [
     "mypy",
+    "pydantic",
+    "boto3-stubs[s3]",
+    "types-requests",
 ]
 
 [tool.black]
@@ -56,7 +84,7 @@ line-length = 79
 [tool.coverage.run]
 parallel = true
 branch = true
-source = ["gafaelfawr"]
+source = ["lcftp", "lcftp_models", "lcftp_auth", "lcftp_client"]
 
 [tool.coverage.paths]
 source = ["src", ".tox/*/site-packages"]
@@ -76,6 +104,8 @@ exclude_lines = [
 ]
 
 [tool.mypy]
+explicit_package_bases = true
+mypy_path = ["src", "models/src", "auth/src", "client/src", "."]
 disallow_incomplete_defs = true
 disallow_untyped_defs = true
 enable_error_code = [
@@ -106,11 +136,10 @@ warn_untyped_fields = true
 
 [tool.pytest.ini_options]
 asyncio_default_fixture_loop_scope = "function"
-asyncio_mode = "strict"
+asyncio_mode = "auto"
+addopts = ["--import-mode=importlib"]
+pythonpath = [".", "client/tests"]
 filterwarnings = [
-    # dataclases-avroschema hasn't been fully updated for Python 3.14
-    "ignore:.*Core Pydantic V1 functionality.*:UserWarning",
-    "ignore:.*'_UnionGenericAlias' is deprecated.*:DeprecationWarning",
     # testcontainers hasn't updated all of the community modules
     "ignore:.*wait_container_is_ready decorator.*:DeprecationWarning",
 ]
@@ -123,7 +152,7 @@ filterwarnings = [
 # enables magical assert processing (showing a full diff on assert failures
 # with complex data structures rather than only the assert message) in files
 # listed in python_files.
-python_files = ["tests/*.py", "tests/*/*.py"]
+python_files = ["tests/*.py", "tests/*/*.py", "*/tests/*.py", "*/tests/*/*.py"]
 
 # Use the generic Ruff configuration in ruff.toml and extend it with only
 # project-specific settings.
@@ -131,13 +160,48 @@ python_files = ["tests/*.py", "tests/*/*.py"]
 extend = "ruff-shared.toml"
 
 [tool.ruff.lint.extend-per-file-ignores]
-"*/noxfile.py" = [
-    "INP001",  # subdirectory nox configuration isn't in a package
+"src/lcftp/api/**" = [
+    "FAST003", # path parameters are consumed by dependencies such as OwnedDep
+]
+"**/testing.py" = [
+    "S101",    # test helpers shipped for plugin authors use assert
+]
+"**/*.ipynb" = [
+    "E501",    # notebook output lines are for reading, not diffing
+    "T201",    # notebooks print results for their reader
+]
+"noxfile.py" = [
+    "T201",    # print makes sense as output from nox rules
+]
+"alembic/**" = [
+    "INP001",  # Alembic files are magical
+    "D103",    # Alembic methods do not need docstrings
+    "D400",    # Alembic migrations have their own docstring format
+]
+"tests/**" = [
+    "D100",    # test modules don't need docstrings
+    "INP001",  # tests use pytest's importlib mode, not packages
+]
+"*/tests/**" = [
+    "D100",    # test modules don't need docstrings
+    "INP001",  # tests use pytest's importlib mode, not packages
+    "C901",    # tests are allowed to be complex, sometimes that's convenient
+    "D101",    # tests don't need docstrings
+    "D103",    # tests don't need docstrings
+    "PLR0915", # tests are allowed to be long, sometimes that's convenient
+    "PT012",   # way too aggressive about limiting pytest.raises blocks
+    "S101",    # tests should use assert
+    "S106",    # tests are allowed to hard-code dummy passwords
+    "S301",    # allow tests for whether code can be pickled
+    "SLF001",  # tests are allowed to access private members
 ]
 
 [tool.ruff.lint.isort]
 known-first-party = [
     "lcftp",
+    "lcftp_auth",
+    "lcftp_client",
+    "lcftp_models",
 ]
 
 [tool.scriv]
@@ -155,8 +219,16 @@ skip_fragments = "_template.md.jinja"
 
 [tool.setuptools_scm]
 
+[tool.uv.workspace]
+members = ["models", "auth", "client"]
+
+[tool.uv.sources]
+lcftp-models = { workspace = true }
+lcftp-auth = { workspace = true }
+lcftp-client = { workspace = true }
+
 [tool.uv]
 required-environments = [
-    "sys_platform == 'manylinux' and platform_machine == 'x86_64'",
-    "sys_platform == 'manylinux' and platform_machine == 'aarch64'",
+    "sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "sys_platform == 'linux' and platform_machine == 'aarch64'",
 ]
