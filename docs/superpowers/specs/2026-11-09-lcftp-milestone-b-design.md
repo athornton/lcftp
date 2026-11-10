@@ -66,7 +66,14 @@ not done).
 - **Language:** Python ≥ 3.14 (CI on 3.14 and 3.15). No backports.
 - **Typing:** very strict — `mypy` with the strictness options already
   in `pyproject.toml` plus the pydantic plugin; `ruff` with
-  `ruff-shared.toml`. No untyped defs; `Any` only at third-party
+  `ruff-shared.toml`. The Ruff rule set starts from
+  [lander's `ruff-shared.toml`](https://github.com/lsst-sqre/lander/blob/main/ruff-shared.toml)
+  (SQuaRE house style, to ease a future move into Phalanx), replacing
+  the current Gafaelfawr-derived file, with only these adjustments:
+  `target-version` set to `py314` (lander pins `py312`); the renamed
+  `TCH001–003` codes updated to `TC001–003` for current Ruff; and
+  per-file ignores for `tests/**`, `alembic/**` and `noxfile.py`
+  (asserts, docstrings, `print`). No untyped defs; `Any` only at third-party
   boundaries and immediately narrowed by Pydantic validation.
 - **Concurrency:** asyncio throughout. Blocking third-party calls
   (e.g. the synchronous `alerce` client, possibly `seestarpy`) are wrapped
