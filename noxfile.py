@@ -96,6 +96,12 @@ def test(session: nox.Session) -> None:
     )
 
 
+@session(uv_groups=["dev"])
+def e2e(session: nox.Session) -> None:
+    """Run the end-to-end test of a simulated night."""
+    session.run("pytest", *(session.posargs or ["tests/e2e"]))
+
+
 @nox.session(name="test-py313", python="3.13", venv_backend="uv")
 def test_py313(session: nox.Session) -> None:
     """Test the packages that must run in the Python 3.13 RSP kernel."""

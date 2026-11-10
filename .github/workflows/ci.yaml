@@ -72,3 +72,19 @@ jobs:
 
       - name: Test models and client on Python 3.13
         run: uv run --only-group=nox nox -s test-py313
+
+  docker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: [test]
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Build image
+        run: docker build -t lcftp:ci .
+
+      - name: Check entry points
+        run: docker run --rm lcftp:ci --help | grep -E "web|worker|migrate"

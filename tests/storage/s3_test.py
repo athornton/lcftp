@@ -9,8 +9,7 @@ from botocore.config import Config
 
 from lcftp.storage.s3 import S3ObjectStore
 from lcftp_models.checksums import compute_checksums
-
-from .conftest import S3Endpoint
+from tests.support.storage import S3Endpoint
 
 
 @pytest.fixture
