@@ -2,6 +2,7 @@
 
 Layout under the spool root::
 
+    profile.json          the observatory profile, cached for offline use
     plan.json             the current plan
     state.json            item outcomes (all plans) and which were reported
     frames/<id>.fits      captured frames
@@ -24,6 +25,7 @@ from uuid import UUID
 
 from pydantic import ValidationError
 
+from lcftp_models.observatory import ObservatoryProfile
 from lcftp_models.plan import ObservationPlan
 from lcftp_models.upload import FrameRecord, ItemOutcome
 
@@ -59,6 +61,21 @@ class Spool:
         self._plan_path = root / "plan.json"
         self._state_path = root / "state.json"
         self._stop_path = root / "STOP"
+        self._profile_path = root / "profile.json"
+
+    # Observatory profile (cached for offline use)
+
+    def save_profile(self, profile: ObservatoryProfile) -> None:
+        """Cache the observatory profile."""
+        _atomic_write(self._profile_path, profile.model_dump_json(indent=2))
+
+    def profile(self) -> ObservatoryProfile | None:
+        """Return the cached observatory profile, if any."""
+        if not self._profile_path.exists():
+            return None
+        return ObservatoryProfile.model_validate_json(
+            self._profile_path.read_text()
+        )
 
     # Plans and outcomes
 

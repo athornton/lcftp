@@ -20,6 +20,9 @@ dependencies = [
 ]
 dynamic = ["version"]
 
+[project.scripts]
+lcftp-client = "lcftp_client.cli:main"
+
 [project.entry-points."lcftp.drivers"]
 simulated = "lcftp_client.drivers.simulated:create_driver"
 
