@@ -508,6 +508,12 @@ requires-dist = [{ name = "lcftp-models", editable = "models" }]
 [[package]]
 name = "lcftp-models"
 source = { editable = "models" }
+dependencies = [
+    { name = "pydantic" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "pydantic", specifier = ">=2.12" }]
 
 [[package]]
 name = "librt"

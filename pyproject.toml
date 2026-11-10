@@ -144,9 +144,11 @@ extend = "ruff-shared.toml"
     "D400",    # Alembic migrations have their own docstring format
 ]
 "tests/**" = [
+    "D100",    # test modules don't need docstrings
     "INP001",  # tests use pytest's importlib mode, not packages
 ]
 "*/tests/**" = [
+    "D100",    # test modules don't need docstrings
     "INP001",  # tests use pytest's importlib mode, not packages
     "C901",    # tests are allowed to be complex, sometimes that's convenient
     "D101",    # tests don't need docstrings

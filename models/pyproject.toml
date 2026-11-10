@@ -10,7 +10,7 @@ classifiers = [
     "Operating System :: POSIX",
     "Typing :: Typed",
 ]
-dependencies = []
+dependencies = ["pydantic>=2.12"]
 dynamic = ["version"]
 
 [[project.authors]]
