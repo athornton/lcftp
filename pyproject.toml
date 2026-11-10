@@ -54,8 +54,11 @@ dev = [
     "coverage[toml]",
     "pytest",
     "pytest-asyncio",
+    "ipykernel",
     "lcftp-client",
+    "matplotlib",
     "moto[server]>=5.1",
+    "nbmake",
     "respx",
     "testcontainers[postgres,minio]",
 ]
@@ -162,6 +165,10 @@ extend = "ruff-shared.toml"
 ]
 "**/testing.py" = [
     "S101",    # test helpers shipped for plugin authors use assert
+]
+"**/*.ipynb" = [
+    "E501",    # notebook output lines are for reading, not diffing
+    "T201",    # notebooks print results for their reader
 ]
 "noxfile.py" = [
     "T201",    # print makes sense as output from nox rules
