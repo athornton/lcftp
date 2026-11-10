@@ -63,7 +63,11 @@ not done).
 
 ## 3. Engineering constraints
 
-- **Language:** Python ≥ 3.14 (CI on 3.14 and 3.15). No backports.
+- **Language:** Python ≥ 3.14 for the server and `lcftp-auth`; Python ≥
+  3.13 for `lcftp-models` and `lcftp-client`, because the RSP notebook
+  kernel is Python 3.13 (decided 2026-11-09). CI runs 3.14 and 3.15 for
+  everything and additionally 3.13 for models and client. No older
+  backports.
 - **Typing:** very strict — `mypy` with the strictness options already
   in `pyproject.toml` plus the pydantic plugin; `ruff` with
   `ruff-shared.toml`. The Ruff rule set starts from
@@ -87,9 +91,12 @@ not done).
   Phalanx application later (Helm-friendly: env config, health
   endpoints, separate web/worker processes from the same image).
 - **RSP compatibility:** client and notebook dependencies should be drawn
-  from libraries present in the RSP notebook image where possible. The
-  operator will supply the RSP package list; the plan must include a
-  check against it.
+  from libraries present in the RSP notebook kernel where possible. The
+  RSP package lists (`sciplat-conda-stack.yaml` for the kernel) were
+  supplied on 2026-11-09; every client and models runtime dependency is
+  present there (pydantic 2.14, httpx 0.28.1, click 8.5, astropy 8.0.2,
+  astroplan 0.10.1, numpy 2.4.6, matplotlib 3.10.9, google-crc32c 1.9,
+  tomli-w 1.2). Anything missing is to be proposed to the RSP by RFC.
 
 ## 4. Architecture
 
@@ -404,7 +411,8 @@ names; default `["alerce"]`), `LCFTP_INGEST_INTERVAL` (default 5 min),
    per broker and deep sites served by a dedicated broker filter.
 3. **Simulated FITS realism.** Good enough to exercise the pipeline and
    headers; not intended for science validation.
-4. **RSP dependency list.** To be supplied by the operator; the client
-   and notebook dependency set will be reconciled against it.
+4. **RSP dependency drift.** The kernel's package versions change over
+   time; a test pins our client requirements against a committed copy
+   of the kernel list.
 5. **Repository push access** from the development environment needs
    to be arranged before the first commit lands on GitHub.

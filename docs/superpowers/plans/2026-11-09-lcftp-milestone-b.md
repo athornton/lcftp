@@ -27,7 +27,11 @@ nbmake; nox + nox-uv; ruff; mypy.
 
 ## Global Constraints
 
-- `requires-python = ">=3.14"`; CI matrix Python 3.14 and 3.15. If a
+- `requires-python = ">=3.14"` for the root (server) and `auth`;
+  `requires-python = ">=3.13"` for `models` and `client` (RSP kernel is
+  3.13), with `[tool.ruff] target-version = "py313"` in those two
+  packages, so no 3.14-only syntax or stdlib there. CI matrix Python 3.14
+  and 3.15 for all, plus a 3.13 job testing `models` and `client`. If a
   third-party dependency has no 3.15 wheel yet, mark the 3.15 job
   `continue-on-error` and note it in the task's commit message; do not
   backport or pin around it.
@@ -1000,12 +1004,14 @@ code. Use live network here only.
 
 ### Task 25: Reconcile client dependencies with the RSP image
 
-**Blocked until Adam supplies the RSP package list.** May run any time
-after Task 22.
+The RSP lists are in Adam's `python-deps/` directory (supplied
+2026-11-09); use `sciplat-conda-stack.yaml` (the notebook kernel).
+May run any time after Task 22.
 
 **Files:**
 - Create: `docs/rsp-compatibility.md`, `client/tests/rsp_compat_test.py`,
-  `client/tests/data/rsp-packages.txt` (the supplied list, `name==version` per line)
+  `client/tests/data/rsp-kernel-packages.txt` (generated from
+  `sciplat-conda-stack.yaml`, `name==version` per line)
 - Modify: `client/pyproject.toml` as needed
 
 **Interfaces:**
@@ -1016,6 +1022,7 @@ after Task 22.
 - [ ] **Step 1: Add the list and write the failing test.**
 - [ ] **Step 2: Run; inspect failures.**
 - [ ] **Step 3: For each failure, prefer an RSP-present alternative or
-  loosen our specifier; if neither is reasonable, stop and ask Adam.**
+  loosen our specifier; if neither is reasonable, keep the dependency and
+  list it in `docs/rsp-compatibility.md` under "To RFC".**
 - [ ] **Step 4: Run; expect PASS**; also run the notebook test.
 - [ ] **Step 5: Commit** — `build(client): align dependencies with the RSP notebook image`.
