@@ -11,11 +11,13 @@ from starlette.middleware.sessions import SessionMiddleware
 from lcftp_auth.auth import Auth, build_auth
 from lcftp_auth.config import AuthConfig
 
-from .api import health, observatories, pages, plans
+from .api import health, observatories, pages, plans, uploads
 from .api.deps import SessionDep
 from .api.errors import install_error_handlers
 from .config import Settings
 from .db.session import create_engine, create_sessionmaker
+from .storage.base import ObjectStore
+from .storage.factory import create_object_store
 from .stores.tokens import SqlTokenStore
 from .stores.users import SqlUserStore
 
@@ -26,7 +28,7 @@ def create_app(
     settings: Settings | None = None,
     *,
     engine: AsyncEngine | None = None,
-    store: object | None = None,
+    store: ObjectStore | None = None,
 ) -> FastAPI:
     """Create the LCFTP FastAPI application.
 
@@ -46,7 +48,7 @@ def create_app(
         db = engine or create_engine(config)
         app.state.engine = db
         app.state.sessionmaker = create_sessionmaker(db)
-        app.state.store = store
+        app.state.store = store or create_object_store(config)
         app.state.http = httpx.AsyncClient(timeout=30)
         try:
             yield
@@ -65,6 +67,7 @@ def create_app(
     app.include_router(auth.router)
     app.include_router(observatories.router)
     app.include_router(plans.router)
+    app.include_router(uploads.router)
     app.include_router(pages.router)
     return app
 
