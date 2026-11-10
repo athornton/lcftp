@@ -1,4 +1,5 @@
-.git
+# .git is needed: setuptools-scm reads the version from it while
+# building the install stage. It is not copied into the runtime image.
 .venv
 .nox
 .superpowers

@@ -37,12 +37,21 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
+    # Python 3.15 is a pre-release; some dependencies (e.g. pyyaml, via
+    # uvicorn[standard]) have no wheels for it yet and fail to build, so
+    # its failures are reported but do not fail the workflow.
+    continue-on-error: ${{ matrix.experimental }}
+
     strategy:
       fail-fast: false
       matrix:
         python:
           - "3.14"
-          - "3.15"
+        experimental:
+          - false
+        include:
+          - python: "3.15"
+            experimental: true
 
     steps:
       - uses: actions/checkout@v5
