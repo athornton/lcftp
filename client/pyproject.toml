@@ -20,6 +20,9 @@ dependencies = [
 ]
 dynamic = ["version"]
 
+[project.entry-points."lcftp.drivers"]
+simulated = "lcftp_client.drivers.simulated:create_driver"
+
 [[project.authors]]
 name = "Adam Thornton"
 email = "athornton@gmail.com"
