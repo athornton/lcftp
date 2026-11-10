@@ -1,9 +1,10 @@
 """Object store emulators for storage and end-to-end tests.
 
 ``LCFTP_TEST_S3_ENDPOINT`` and ``LCFTP_TEST_GCS_ENDPOINT`` point at
-already-running emulators; otherwise MinIO and fake-gcs-server are started
-with testcontainers. ``LCFTP_TEST_S3_VALIDATES=0`` marks an S3 emulator
-(such as moto) that does not enforce checksums.
+already-running emulators; otherwise they are started
+in-process (S3, via moto) or with testcontainers (GCS).
+``LCFTP_TEST_S3_VALIDATES=0`` marks an S3 emulator (such as moto) that does
+not enforce checksums.
 """
 
 import os
@@ -29,16 +30,22 @@ def s3_endpoint() -> Iterator[S3Endpoint]:
         validates = os.environ.get("LCFTP_TEST_S3_VALIDATES", "1") == "1"
         yield S3Endpoint(url, "testing", "testing", validates)
         return
-    from testcontainers.minio import MinioContainer  # noqa: PLC0415
+    # MinIO images are no longer publicly pullable, so run moto in-process.
+    # moto does not enforce checksums; tests that need that are skipped.
+    from moto.server import ThreadedMotoServer  # noqa: PLC0415
 
-    with MinioContainer() as minio:
-        config = minio.get_config()
+    server = ThreadedMotoServer(ip_address="127.0.0.1", port=0)
+    server.start()
+    host, port = server.get_host_and_port()
+    try:
         yield S3Endpoint(
-            f"http://{config['endpoint']}",
-            config["access_key"],
-            config["secret_key"],
-            validates_checksums=True,
+            f"http://{host}:{port}",
+            "testing",
+            "testing",
+            validates_checksums=False,
         )
+    finally:
+        server.stop()
 
 
 @pytest.fixture(scope="session")

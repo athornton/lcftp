@@ -60,7 +60,7 @@ dev = [
     "moto[server]>=5.1",
     "nbmake",
     "respx",
-    "testcontainers[postgres,minio]",
+    "testcontainers[postgres]",
 ]
 lint = [
     "pre-commit",
