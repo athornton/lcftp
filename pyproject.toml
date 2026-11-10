@@ -149,6 +149,9 @@ extend = "ruff-shared.toml"
 "src/lcftp/api/**" = [
     "FAST003", # path parameters are consumed by dependencies such as OwnedDep
 ]
+"**/testing.py" = [
+    "S101",    # test helpers shipped for plugin authors use assert
+]
 "noxfile.py" = [
     "T201",    # print makes sense as output from nox rules
 ]
