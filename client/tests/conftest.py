@@ -1,7 +1,9 @@
 """Shared fixtures for lcftp-client tests."""
 
+import hashlib
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import pytest
 
@@ -86,3 +88,39 @@ def profile() -> ObservatoryProfile:
         fov_arcmin=77,
         filters=[FilterSpec(name="r", wavelength_nm=620)],
     )
+
+
+class FakeBucket:
+    """ASGI bucket that enforces the x-lcftp-sha256 header like a real one."""
+
+    def __init__(self) -> None:
+        self.stored: dict[str, bytes] = {}
+        self.reject_next = 0
+        self.puts = 0
+
+    async def __call__(self, scope: Any, receive: Any, send: Any) -> None:
+        body = bytearray()
+        while True:
+            message = await receive()
+            body.extend(message.get("body", b""))
+            if not message.get("more_body"):
+                break
+        self.puts += 1
+        headers = {k.decode(): v.decode() for k, v in scope["headers"]}
+        status = 200
+        if self.reject_next > 0:
+            self.reject_next -= 1
+            status = 403
+        elif hashlib.sha256(body).hexdigest() != headers.get("x-lcftp-sha256"):
+            status = 400
+        else:
+            self.stored[scope["path"].lstrip("/")] = bytes(body)
+        await send(
+            {"type": "http.response.start", "status": status, "headers": []}
+        )
+        await send({"type": "http.response.body", "body": b""})
+
+
+@pytest.fixture
+def bucket() -> FakeBucket:
+    return FakeBucket()
