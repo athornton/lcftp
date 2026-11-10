@@ -1,5 +1,7 @@
 import asyncio
+from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
+from typing import override
 
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
@@ -9,6 +11,7 @@ from lcftp.config import Settings
 from lcftp.db.session import create_sessionmaker
 from lcftp.ingest.worker import run_ingest_once, run_worker
 from lcftp.stores.candidates import SqlCandidateStore
+from lcftp_models.candidate import Candidate
 from tests.support.factories import make_observatory, make_user
 
 NOW = datetime(2026, 11, 10, 3, 0, tzinfo=UTC)
@@ -141,3 +144,28 @@ async def test_run_worker_stops(
     await asyncio.wait_for(
         run_worker(settings, brokers=[broker], engine=engine, stop=stop), 5
     )
+
+
+class ExplodingBroker(FakeBroker):
+    @override
+    async def poll(
+        self, since: datetime, mag_limit: float
+    ) -> AsyncIterator[Candidate]:
+        if since:
+            raise RuntimeError("unexpected bug")
+        yield make_candidate(1)  # pragma: no cover
+
+
+async def test_unexpected_broker_error_is_contained(
+    engine: AsyncEngine, db_session: AsyncSession, settings: Settings
+) -> None:
+    await _observatory(db_session)
+    sessions = create_sessionmaker(engine)
+    good = FakeBroker([make_candidate(2, when=NOW)], name="good")
+    report = await run_ingest_once(
+        [ExplodingBroker([], name="bad"), good], sessions, settings, NOW
+    )
+    assert report.failed == ["bad"]
+    assert report.per_broker == {"good": 1}
+    state = await SqlCandidateStore(db_session).get_state("bad")
+    assert state.consecutive_failures == 1

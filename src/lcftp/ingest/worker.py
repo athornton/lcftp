@@ -63,7 +63,9 @@ async def _poll_one(
                     count += 1
                     if newest is None or candidate.latest_alert_time > newest:
                         newest = candidate.latest_alert_time
-        except BrokerUnavailableError as e:
+        except Exception as e:
+            if not isinstance(e, BrokerUnavailableError):
+                logger.exception("Unexpected error polling %s", broker.name)
             failures = state.consecutive_failures + 1
             delay = min(settings.ingest_interval * 2**failures, MAX_BACKOFF)
             logger.warning(

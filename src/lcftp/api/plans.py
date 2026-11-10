@@ -1,5 +1,6 @@
 """Availability-to-plan endpoints for observatory clients."""
 
+import asyncio
 from datetime import UTC, datetime
 from uuid import uuid4
 
@@ -44,9 +45,12 @@ async def post_availability(
     plan_id = uuid4().hex
     await plans.supersede_overlapping(observatory_id, window, plan_id)
     candidates = await candidates_store.query(profile.limiting_mag)
-    night = observing_night(window.start, profile.site.timezone)
+    tz = profile.site.timezone
+    nights = sorted(
+        {observing_night(window.start, tz), observing_night(window.end, tz)}
+    )
     counts = await plans.assignment_counts(
-        night, [c.dia_object_id for c in candidates]
+        nights, [c.dia_object_id for c in candidates]
     )
     plan = ObservationPlan(
         plan_id=plan_id,
@@ -57,9 +61,11 @@ async def post_availability(
             settings.brokers
         ),
         planner_version=planner.version,
-        items=plan_observations(profile, window, candidates, counts, planner),
+        items=await asyncio.to_thread(
+            plan_observations, profile, window, candidates, counts, planner
+        ),
     )
-    await plans.save(plan, night)
+    await plans.save(plan, tz)
     return plan
 
 

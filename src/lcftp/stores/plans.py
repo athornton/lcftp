@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from lcftp_models.plan import AvailabilityWindow, ObservationPlan, PlanStatus
 
 from ..db.schema import Assignment, PlanRow
+from ..planner.night import observing_night
 
 __all__ = ["SqlPlanStore"]
 
@@ -19,8 +20,12 @@ class SqlPlanStore:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
-    async def save(self, plan: ObservationPlan, night: date) -> None:
-        """Store a plan and record its targets as assigned for ``night``."""
+    async def save(self, plan: ObservationPlan, timezone: str) -> None:
+        """Store a plan and assign each target to the night it is observed.
+
+        The night of each assignment is the observing night (see
+        `~lcftp.planner.night.observing_night`) of the item's start time.
+        """
         self._session.add(
             PlanRow(
                 plan_id=plan.plan_id,
@@ -33,7 +38,11 @@ class SqlPlanStore:
             )
         )
         await self._session.flush()
-        for dia_object_id in {i.candidate.dia_object_id for i in plan.items}:
+        nights = {
+            i.candidate.dia_object_id: observing_night(i.not_before, timezone)
+            for i in plan.items
+        }
+        for dia_object_id, night in nights.items():
             self._session.add(
                 Assignment(
                     plan_id=plan.plan_id,
@@ -72,23 +81,30 @@ class SqlPlanStore:
         return list((await self._session.execute(stmt)).scalars())
 
     async def assignment_counts(
-        self, night: date, dia_object_ids: Sequence[int]
+        self, nights: Sequence[date], dia_object_ids: Sequence[int]
     ) -> dict[int, int]:
-        """Count observatories assigned each target on ``night``."""
-        if not dia_object_ids:
+        """Count observatories assigned each target.
+
+        Counts are per night; for each target the largest count over
+        ``nights`` is returned.
+        """
+        if not dia_object_ids or not nights:
             return {}
         stmt = (
             select(
+                Assignment.night,
                 Assignment.dia_object_id,
                 func.count(func.distinct(Assignment.observatory_id)),
             )
             .join(PlanRow, PlanRow.plan_id == Assignment.plan_id)
             .where(
-                Assignment.night == night,
+                Assignment.night.in_(nights),
                 Assignment.dia_object_id.in_(dia_object_ids),
                 PlanRow.superseded_by.is_(None),
             )
-            .group_by(Assignment.dia_object_id)
+            .group_by(Assignment.night, Assignment.dia_object_id)
         )
-        rows = (await self._session.execute(stmt)).all()
-        return {int(oid): int(count) for oid, count in rows}
+        counts: dict[int, int] = {}
+        for _, oid, count in (await self._session.execute(stmt)).all():
+            counts[int(oid)] = max(counts.get(int(oid), 0), int(count))
+        return counts

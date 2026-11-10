@@ -1,9 +1,14 @@
+import asyncio
+import threading
+import time
 from datetime import UTC, date, datetime
 
+import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from lcftp.api import plans as plans_api
 from lcftp.brokers.testing import make_candidate
 from lcftp.db.schema import Assignment
 from lcftp.stores.candidates import SqlCandidateStore
@@ -66,7 +71,7 @@ async def test_overlapping_request_supersedes(
     r = await client.get(f"/api/plans/{first['plan_id']}", headers=headers)
     assert r.json()["superseded_by"] == second["plan_id"]
     counts = await SqlPlanStore(db_session).assignment_counts(
-        date(2026, 11, 9), [1, 2, 3]
+        [date(2026, 11, 9)], [1, 2, 3]
     )
     assert counts == {1: 1, 2: 1, 3: 1}
 
@@ -157,3 +162,58 @@ async def test_naive_datetimes_rejected(
     )
     assert r.status_code == 422
     assert r.json()["code"] == "invalid_request"
+
+
+async def test_night_follows_items_not_window_start(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    mauna_kea = SiteLocation(
+        latitude=19.82,
+        longitude=-155.47,
+        elevation_m=4200,
+        timezone="Pacific/Honolulu",
+    )
+    headers = await _setup(db_session, "mk", mauna_kea)
+    # Starts 10:00 HST on the 10th; every target is observed that evening.
+    window = {"start": "2026-11-10T20:00:00Z", "end": "2026-11-11T20:00:00Z"}
+    r = await client.post(
+        "/api/observatories/mk/availability", json=window, headers=headers
+    )
+    assert r.json()["items"]
+    nights = (
+        (await db_session.execute(select(Assignment.night))).scalars().all()
+    )
+    assert set(nights) == {date(2026, 11, 10)}
+    counts = await SqlPlanStore(db_session).assignment_counts(
+        [date(2026, 11, 10)], [1, 2, 3]
+    )
+    assert counts == {1: 1, 2: 1, 3: 1}
+
+
+async def test_planning_does_not_block_event_loop(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    headers = await _setup(db_session)
+    started = threading.Event()
+    finished: list[float] = []
+
+    def slow_planner(*args: object) -> list[object]:
+        started.set()
+        time.sleep(0.5)
+        finished.append(time.monotonic())
+        return []
+
+    monkeypatch.setattr(plans_api, "plan_observations", slow_planner)
+    plan = asyncio.create_task(
+        client.post(
+            "/api/observatories/obs1/availability", json=NIGHT, headers=headers
+        )
+    )
+    await asyncio.to_thread(started.wait, 5)
+    r = await client.get("/health")
+    health_done = time.monotonic()
+    assert r.status_code == 200
+    assert (await plan).status_code == 201
+    assert health_done < finished[0]

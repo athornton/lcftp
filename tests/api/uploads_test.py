@@ -1,4 +1,4 @@
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import UUID, uuid4
 
@@ -54,7 +54,7 @@ async def _plan(session: AsyncSession, observatory_id: str = "obs1") -> None:
             )
         ],
     )
-    await SqlPlanStore(session).save(plan, date(2026, 11, 9))
+    await SqlPlanStore(session).save(plan, "America/Phoenix")
 
 
 @pytest.fixture

@@ -38,7 +38,10 @@ async def get_session(request: Request) -> AsyncIterator[AsyncSession]:
         yield session
 
 
-type SessionDep = Annotated[AsyncSession, Depends(get_session)]
+type SessionDep = Annotated[
+    AsyncSession, Depends(get_session, scope="function")
+]
+"""A transaction committed before the response is sent."""
 type SettingsDep = Annotated[Settings, Depends(get_settings)]
 
 

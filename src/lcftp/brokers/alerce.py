@@ -114,7 +114,7 @@ class AlerceBroker:
             if not objects:
                 return
             candidates = await asyncio.gather(
-                *(self._candidate(o, since, mag_limit) for o in objects)
+                *(self._safe_candidate(o, since, mag_limit) for o in objects)
             )
             for candidate in candidates:
                 if candidate is not None:
@@ -129,6 +129,18 @@ class AlerceBroker:
             except Exception as e:
                 msg = f"ALeRCE request failed: {e}"
                 raise BrokerUnavailableError(msg) from e
+
+    async def _safe_candidate(
+        self, obj: Mapping[str, Any], since: datetime, mag_limit: float
+    ) -> Candidate | None:
+        """Convert one object, logging and skipping it on any error."""
+        try:
+            return await self._candidate(obj, since, mag_limit)
+        except (BrokerUnavailableError, ValueError, TypeError) as e:
+            logger.warning(
+                "Skipping ALeRCE object %s: %s", _field(obj, "oid"), e
+            )
+            return None
 
     async def _candidate(
         self, obj: Mapping[str, Any], since: datetime, mag_limit: float

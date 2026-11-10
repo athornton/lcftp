@@ -3,7 +3,7 @@ import logging
 from datetime import UTC, datetime, timedelta
 from importlib.metadata import entry_points
 from pathlib import Path
-from typing import Any
+from typing import Any, override
 
 import pytest
 import requests
@@ -121,3 +121,37 @@ def test_factory_reads_config() -> None:
 def test_alerce_is_registered_entry_point() -> None:
     names = {ep.name for ep in entry_points(group="lcftp.brokers")}
     assert "alerce" in names
+
+
+class MessyAlerce(StubAlerce):
+    """Adds a malformed object and one whose detections request fails."""
+
+    @override
+    def query_objects(self, **kwargs: Any) -> list[dict[str, Any]]:
+        objects = super().query_objects(**kwargs)
+        if kwargs["page"] == 1:
+            objects = [
+                {"oid": 9001, "meandec": 95.0, "meanra": 10.0},
+                {"oid": 9002, "meandec": 0.0, "meanra": 10.0},
+                *objects,
+            ]
+        return objects
+
+    @override
+    def query_detections(self, **kwargs: Any) -> list[dict[str, Any]]:
+        if kwargs["oid"] == 9001:
+            return [{"mjd": 61353.5, "psfFlux": 1e6, "dec": 95.0, "ra": 10.0}]
+        if kwargs["oid"] == 9002:
+            raise requests.HTTPError("404 Not Found")
+        return super().query_detections(**kwargs)
+
+
+async def test_bad_objects_are_skipped(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    with caplog.at_level(logging.WARNING):
+        found = [c async for c in _broker(MessyAlerce()).poll(SINCE, 30.0)]
+    assert {c.dia_object_id for c in found} == _expected(30.0)
+    messages = " ".join(r.getMessage() for r in caplog.records)
+    assert "9001" in messages
+    assert "9002" in messages
