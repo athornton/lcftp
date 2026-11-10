@@ -3,6 +3,7 @@
 import secrets
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Annotated, Any
 from urllib.parse import urlencode
 
@@ -14,8 +15,9 @@ from lcftp_models.errors import ErrorCode, LcftpError
 
 from .config import AuthConfig
 from .github import AUTHORIZE_URL, GitHubClient
-from .principals import UserPrincipal
-from .stores import UserStore
+from .principals import DevicePrincipal, UserPrincipal
+from .stores import TokenStore, UserStore
+from .tokens import hash_token
 
 __all__ = ["Auth", "build_auth"]
 
@@ -32,6 +34,9 @@ class Auth:
 
     require_user: Callable[..., Any]
     """Dependency returning the logged-in `UserPrincipal`."""
+
+    require_device: Callable[..., Any]
+    """Dependency returning the `DevicePrincipal` of a bearer token."""
 
     config: AuthConfig
 
@@ -65,6 +70,7 @@ def build_auth(
         FastAPI dependency returning an ``httpx.AsyncClient``.
     """
     users_dep = Annotated[UserStore, Depends(user_store)]
+    tokens_dep = Annotated[TokenStore, Depends(token_store)]
     http_dep = Annotated[httpx.AsyncClient, Depends(http)]
     router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -122,4 +128,28 @@ def build_auth(
             raise LcftpError(ErrorCode.not_authenticated, msg, 401)
         return UserPrincipal(user_id=user.id, github_login=user.github_login)
 
-    return Auth(router=router, require_user=require_user, config=config)
+    async def require_device(
+        request: Request, tokens: tokens_dep
+    ) -> DevicePrincipal:
+        scheme, _, token = request.headers.get("authorization", "").partition(
+            " "
+        )
+        found = None
+        if scheme.lower() == "bearer" and token.strip():
+            found = await tokens.lookup(hash_token(token.strip()))
+        if found is None or found.revoked_at is not None:
+            msg = "Device token is invalid or has been revoked."
+            raise LcftpError(ErrorCode.not_authenticated, msg, 401)
+        await tokens.touch(found.id, datetime.now(tz=UTC))
+        return DevicePrincipal(
+            token_id=found.id,
+            observatory_id=found.observatory_id,
+            owner_login=found.owner_login,
+        )
+
+    return Auth(
+        router=router,
+        require_user=require_user,
+        require_device=require_device,
+        config=config,
+    )

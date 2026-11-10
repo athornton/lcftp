@@ -16,6 +16,7 @@ from .api.deps import SessionDep
 from .api.errors import install_error_handlers
 from .config import Settings
 from .db.session import create_engine, create_sessionmaker
+from .stores.tokens import SqlTokenStore
 from .stores.users import SqlUserStore
 
 __all__ = ["create_app"]
@@ -76,6 +77,11 @@ def get_user_store(session: SessionDep) -> SqlUserStore:
     return SqlUserStore(session)
 
 
+def get_token_store(session: SessionDep) -> SqlTokenStore:
+    """Return a token store bound to the request's session."""
+    return SqlTokenStore(session)
+
+
 def _build_auth(settings: Settings) -> Auth:
     config = AuthConfig(
         github_client_id=settings.github_client_id,
@@ -87,6 +93,6 @@ def _build_auth(settings: Settings) -> Auth:
     return build_auth(
         config,
         user_store=get_user_store,
-        token_store=lambda: None,
+        token_store=get_token_store,
         http=get_http,
     )
