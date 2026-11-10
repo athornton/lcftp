@@ -10,7 +10,12 @@ classifiers = [
     "Operating System :: POSIX",
     "Typing :: Typed",
 ]
-dependencies = ["lcftp-models"]
+dependencies = [
+    "fastapi>=0.120",
+    "httpx>=0.28",
+    "itsdangerous>=2.2",
+    "lcftp-models",
+]
 dynamic = ["version"]
 
 [[project.authors]]
