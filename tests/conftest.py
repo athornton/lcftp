@@ -62,3 +62,12 @@ async def client(app: FastAPI) -> AsyncIterator[AsyncClient]:
     base_url = "https://lcftp.example.com"
     async with AsyncClient(transport=transport, base_url=base_url) as client:
         yield client
+
+
+@pytest_asyncio.fixture
+async def other_client(app: FastAPI) -> AsyncIterator[AsyncClient]:
+    """Provide a second, independent client (e.g. a different user)."""
+    transport = ASGITransport(app=app)
+    base_url = "https://lcftp.example.com"
+    async with AsyncClient(transport=transport, base_url=base_url) as client:
+        yield client

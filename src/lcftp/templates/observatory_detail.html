@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>{{ observatory.name }}</h1>
+<table>
+  <tr><th>Site</th><td>{{ observatory.site.latitude }}, {{ observatory.site.longitude }}, {{ observatory.site.elevation_m }} m ({{ observatory.site.timezone }})</td></tr>
+  <tr><th>Aperture</th><td>{{ observatory.aperture_m }} m</td></tr>
+  <tr><th>Limiting magnitude</th><td>{{ observatory.limiting_mag }}</td></tr>
+  <tr><th>Field of view</th><td>{{ observatory.fov_arcmin }} arcmin</td></tr>
+  <tr><th>Driver</th><td>{{ observatory.driver }}</td></tr>
+  <tr><th>Observatory id</th><td><code>{{ observatory.id }}</code></td></tr>
+</table>
+
+<h2>Device tokens</h2>
+{% if new_token %}
+<p>New token for <strong>{{ new_token.token_info.label }}</strong>. Copy it now; it will not be shown again:</p>
+<p class="token">{{ new_token.token }}</p>
+<p>On your Raspberry Pi: <code>lcftp-client init --server {{ base_url }} --token &lt;token&gt;</code></p>
+{% endif %}
+<table>
+  <tr><th>Label</th><th>Created</th><th>Last used</th><th></th></tr>
+  {% for t in tokens %}
+  <tr>
+    <td>{{ t.label }}</td><td>{{ t.created_at }}</td><td>{{ t.last_used or "never" }}</td>
+    <td>{% if t.revoked_at %}revoked{% else %}
+      <form method="post" action="/observatories/{{ observatory.id }}/tokens/{{ t.id }}/revoke"><button>Revoke</button></form>
+    {% endif %}</td>
+  </tr>
+  {% endfor %}
+</table>
+<form method="post" action="/observatories/{{ observatory.id }}/tokens">
+  <label>Label <input name="label" required placeholder="raspberry-pi"></label>
+  <button>Create token</button>
+</form>
+{% endblock %}

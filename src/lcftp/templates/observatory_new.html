@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Register an observatory</h1>
+{% if errors %}
+<ul class="error">{% for e in errors %}<li>{{ e.loc | join(".") }}: {{ e.msg }}</li>{% endfor %}</ul>
+{% endif %}
+<form method="post" action="/observatories/new">
+  <label>Name <input name="name" required value="{{ form.name or '' }}"></label>
+  <label>Latitude (deg, north +) <input name="latitude" required value="{{ form.latitude or '' }}"></label>
+  <label>Longitude (deg, east +) <input name="longitude" required value="{{ form.longitude or '' }}"></label>
+  <label>Elevation (m) <input name="elevation_m" required value="{{ form.elevation_m or '' }}"></label>
+  <label>Timezone (IANA) <input name="timezone" required value="{{ form.timezone or '' }}" placeholder="America/Phoenix"></label>
+  <label>Aperture (m) <input name="aperture_m" required value="{{ form.aperture_m or '' }}"></label>
+  <label>Limiting magnitude <input name="limiting_mag" required value="{{ form.limiting_mag or '' }}"></label>
+  <label>Field of view (arcmin) <input name="fov_arcmin" required value="{{ form.fov_arcmin or '' }}"></label>
+  <label>Telescope driver <input name="driver" value="{{ form.driver or 'simulated' }}"></label>
+  <p><button>Register</button></p>
+</form>
+{% endblock %}

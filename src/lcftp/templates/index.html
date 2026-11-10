@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block content %}
+{% if not user %}
+  <p>Lend your robotic telescope to Rubin alert follow-up.</p>
+  <p><a href="/auth/login">Log in with GitHub</a></p>
+{% else %}
+  <h1>Your observatories</h1>
+  {% if observatories %}
+  <table>
+    <tr><th>Name</th><th>Limiting mag</th><th>Driver</th></tr>
+    {% for o in observatories %}
+    <tr><td><a href="/observatories/{{ o.id }}">{{ o.name }}</a></td><td>{{ o.limiting_mag }}</td><td>{{ o.driver }}</td></tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p>None yet.</p>
+  {% endif %}
+  <p><a href="/observatories/new">Register an observatory</a></p>
+{% endif %}
+{% endblock %}
