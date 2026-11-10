@@ -168,6 +168,18 @@ wheels = [
 ]
 
 [[package]]
+name = "astroplan"
+version = "0.10.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "astropy" },
+    { name = "numpy" },
+    { name = "pytz" },
+    { name = "six" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/48/80/1be3af06717245a51adaf6994b682b3ee25ace9bfe5d443d440209d627df/astroplan-0.10.1.tar.gz", hash = "sha256:39d97c3377e1630abff3a94d8c956980f77a3e809e27a0376dd7d30abe3b6959", size = 140603, upload-time = "2024-08-13T20:12:04.462Z" }
+
+[[package]]
 name = "astropy"
 version = "8.0.2"
 source = { registry = "https://pypi.org/simple" }
@@ -974,6 +986,8 @@ source = { editable = "." }
 dependencies = [
     { name = "alembic" },
     { name = "alerce" },
+    { name = "astroplan" },
+    { name = "astropy" },
     { name = "asyncpg" },
     { name = "click" },
     { name = "fastapi" },
@@ -1014,6 +1028,8 @@ typing = [
 requires-dist = [
     { name = "alembic", specifier = ">=1.16" },
     { name = "alerce", specifier = ">=2.4" },
+    { name = "astroplan", specifier = ">=0.10" },
+    { name = "astropy", specifier = ">=7.0" },
     { name = "asyncpg", specifier = ">=0.30" },
     { name = "click", specifier = ">=8.2" },
     { name = "fastapi", specifier = ">=0.120" },
@@ -1909,6 +1925,15 @@ wheels = [
 ]
 
 [[package]]
+name = "pytz"
+version = "2026.6"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/f5/b0/168030b0bfcc334cf09fa3313afdb888d892c8a0027324683d1de0ec277e/pytz-2026.6.tar.gz", hash = "sha256:3b0fc2727707663d6e517936f444fd8a8b240f1fc32f4bf7ee03274245945284", size = 318520, upload-time = "2026-10-29T09:05:47.011Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b6/25/564f3fc5b70c1398d706c51f2b1470d0ea0b1b2f96fee67877b6f5bdf3b6/pytz-2026.6-py2.py3-none-any.whl", hash = "sha256:7fed3fee8fd6bd4a2b7b75a8d56021d0624127bf69bd5691f115db929ac570b3", size = 506321, upload-time = "2026-10-29T09:05:45.14Z" },
+]
+
+[[package]]
 name = "pywin32"
 version = "312"
 source = { registry = "https://pypi.org/simple" }
@@ -1997,6 +2022,15 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/ea/f9/0ae446942c846b8266059ad8a30702a35afae55f5cdc54c5adf8d7afdc27/ruff-0.15.12-py3-none-win32.whl", hash = "sha256:d0185894e038d7043ba8fd6aee7499ece6462dc0ea9f1e260c7451807c714c20", size = 10657277, upload-time = "2026-04-24T18:17:18.591Z" },
     { url = "https://files.pythonhosted.org/packages/33/f1/9614e03e1cdcbf9437570b5400ced8a720b5db22b28d8e0f1bda429f660d/ruff-0.15.12-py3-none-win_amd64.whl", hash = "sha256:c87a162d61ab3adca47c03f7f717c68672edec7d1b5499e652331780fe74950d", size = 11837758, upload-time = "2026-04-24T18:17:00.113Z" },
     { url = "https://files.pythonhosted.org/packages/c0/98/6beb4b351e472e5f4c4613f7c35a5290b8be2497e183825310c4c3a3984b/ruff-0.15.12-py3-none-win_arm64.whl", hash = "sha256:a538f7a82d061cee7be55542aca1d86d1393d55d81d4fcc314370f4340930d4f", size = 11120821, upload-time = "2026-04-24T18:16:57.979Z" },
+]
+
+[[package]]
+name = "six"
+version = "1.17.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/94/e7/b2c673351809dca68a0e064b6af791aa332cf192da575fd474ed7d6f16a2/six-1.17.0.tar.gz", hash = "sha256:ff70335d468e7eb6ec65b95b99d3a2836546063f63acc5171de367e834932a81", size = 34031, upload-time = "2024-12-04T17:35:28.174Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b7/ce/149a00dd41f10bc29e5921b496af8b574d8413afcd5e30dfa0ed46c2cc5e/six-1.17.0-py2.py3-none-any.whl", hash = "sha256:4721f391ed90541fddacab5acf947aa0d3dc7d27b2e1e8eda2be8970586c3274", size = 11050, upload-time = "2024-12-04T17:35:26.475Z" },
 ]
 
 [[package]]
