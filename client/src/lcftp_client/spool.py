@@ -109,6 +109,23 @@ class Spool:
         state["reported"] = sorted(reported)
         self._save_state(state)
 
+    def mark_started(self, plan_id: str, item_id: str) -> None:
+        """Record that observing an item has begun."""
+        state = self._state()
+        started = set(state.get("started", []))
+        started.add(_key(plan_id, item_id))
+        state["started"] = sorted(started)
+        self._save_state(state)
+
+    def started_items(self, plan_id: str) -> set[str]:
+        """Return item ids of ``plan_id`` whose observation began."""
+        prefix = f"{plan_id}/"
+        return {
+            key.removeprefix(prefix)
+            for key in self._state().get("started", [])
+            if key.startswith(prefix)
+        }
+
     # Frames
 
     def new_frame_path(self, frame_id: UUID) -> Path:
