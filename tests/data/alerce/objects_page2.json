@@ -1,0 +1,21 @@
+{
+ "_comment": "SYNTHETIC",
+ "items": [
+  {
+   "oid": 1005,
+   "meanra": 10.0,
+   "meandec": 0.0,
+   "firstmjd": 61350.05,
+   "lastmjd": 61353.05,
+   "n_det": 4
+  },
+  {
+   "oid": 1006,
+   "meanra": 200.0,
+   "meandec": -20.0,
+   "firstmjd": 61350.06,
+   "lastmjd": 61353.06,
+   "n_det": 4
+  }
+ ]
+}
