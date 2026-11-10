@@ -16,12 +16,7 @@ from lcftp_models.upload import (
 )
 
 from .clock import Clock
-from .drivers.base import (
-    CapturedFrame,
-    DriverError,
-    ObservationContext,
-    TelescopeDriver,
-)
+from .drivers.base import CapturedFrame, ObservationContext, TelescopeDriver
 from .fits import stamp_provenance
 from .spool import Spool
 
@@ -106,32 +101,52 @@ class Runner:
             new_frame_path=self._spool.new_frame_path,
             clock=self._clock,
         )
+        observe = asyncio.ensure_future(self._driver.observe(item, ctx))
+        stop = asyncio.ensure_future(self._watch_stop())
         try:
-            result = await asyncio.wait_for(
-                self._driver.observe(item, ctx), self._timeout
+            done, _ = await asyncio.wait(
+                {observe, stop},
+                timeout=self._timeout,
+                return_when=asyncio.FIRST_COMPLETED,
             )
-        except TimeoutError:
-            self._record(
-                plan, item, "failed", OutcomeReason.timeout, started=started
+        finally:
+            for task in (observe, stop):
+                if not task.done():
+                    task.cancel()
+                    with contextlib.suppress(asyncio.CancelledError):
+                        await task
+        if observe not in done:
+            reason = (
+                OutcomeReason.stopped
+                if stop in done
+                else OutcomeReason.timeout
             )
+            status: OutcomeStatus = "skipped" if stop in done else "failed"
+            self._record(plan, item, status, reason, started=started)
             return
-        except DriverError as e:
+        try:
+            result = observe.result()
+            if result.weather_blocked:
+                self._record(
+                    plan,
+                    item,
+                    "skipped",
+                    OutcomeReason.weather,
+                    started=started,
+                )
+                return
+            for frame in result.frames:
+                self._commit(plan, item, frame)
+        except Exception as e:
             self._record(
                 plan,
                 item,
                 "failed",
                 OutcomeReason.driver_error,
-                detail=str(e),
+                detail=str(e) or type(e).__name__,
                 started=started,
             )
             return
-        if result.weather_blocked:
-            self._record(
-                plan, item, "skipped", OutcomeReason.weather, started=started
-            )
-            return
-        for frame in result.frames:
-            self._commit(plan, item, frame)
         self._record(plan, item, "observed", OutcomeReason.ok, started=started)
 
     async def _wait_until(self, when: datetime) -> bool:

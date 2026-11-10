@@ -1,20 +1,28 @@
 """Command-line interface for the LCFTP observatory client."""
 
 import asyncio
+import logging
 import signal
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, time, timedelta
+from functools import partial
 from pathlib import Path
+from typing import Protocol
 from zoneinfo import ZoneInfo
 
 import click
 from pydantic import HttpUrl, SecretStr
 
 from .api import ServerClient
+from .clock import Clock
 from .config import ClientConfig, default_config_path, load_config, save_config
 from .session import LcftpClient
 from .spool import Spool
+from .uploader import UploadSummary
 
-__all__ = ["main", "make_client", "next_window"]
+__all__ = ["daemon_loop", "main", "make_client", "next_window"]
+
+logger = logging.getLogger(__name__)
 
 UPLOAD_RETRY = timedelta(minutes=15)
 
@@ -128,6 +136,7 @@ def run(ctx: click.Context) -> None:
 
     async def execute() -> None:
         async with make_client(_config(ctx)) as client:
+            _install_stop_handlers(client, asyncio.Event())
             await client.run()
 
     asyncio.run(execute())
@@ -172,31 +181,82 @@ def daemon(ctx: click.Context) -> None:
     asyncio.run(_daemon(config, config.nightly_start, config.nightly_end))
 
 
+class DaemonClient(Protocol):
+    """What the daemon loop needs from `LcftpClient`."""
+
+    @property
+    def clock(self) -> Clock:
+        """The client's clock."""
+
+    async def night_once(
+        self, start: datetime, end: datetime
+    ) -> UploadSummary:
+        """Plan, observe and upload for one window."""
+
+    async def upload(self) -> UploadSummary:
+        """Upload pending frames."""
+
+
+async def daemon_loop(
+    client: DaemonClient,
+    start: time,
+    end: time,
+    tz: str,
+    wait: Callable[[timedelta], Awaitable[bool]],
+) -> None:
+    """Observe once per nightly window, retrying uploads in between.
+
+    ``wait`` sleeps for a duration and returns True if the daemon should
+    stop. A failed night is logged and retried after `UPLOAD_RETRY`; it
+    never ends the daemon.
+    """
+    earliest = client.clock.now()
+    while True:
+        now = client.clock.now()
+        begin, finish = next_window(max(now, earliest), start, end, tz)
+        if await wait(begin - now):
+            return
+        try:
+            summary = await client.night_once(begin, finish)
+        except Exception:
+            logger.exception("Night starting %s failed", begin)
+            if await wait(UPLOAD_RETRY):
+                return
+            continue
+        click.echo(summary.model_dump_json())
+        earliest = finish + timedelta(seconds=1)
+        while summary.remaining:
+            if await wait(UPLOAD_RETRY):
+                return
+            try:
+                summary = await client.upload()
+            except Exception:
+                logger.exception("Upload retry failed")
+                continue
+            click.echo(summary.model_dump_json())
+
+
+def _install_stop_handlers(
+    client: LcftpClient, stopping: asyncio.Event
+) -> None:
+    loop = asyncio.get_running_loop()
+
+    def on_signal() -> None:
+        client.stop()
+        stopping.set()
+
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        loop.add_signal_handler(sig, on_signal)
+
+
 async def _daemon(config: ClientConfig, start: time, end: time) -> None:
     stopping = asyncio.Event()
     async with make_client(config) as client:
-        loop = asyncio.get_running_loop()
-
-        def on_signal() -> None:
-            client.stop()
-            stopping.set()
-
-        for sig in (signal.SIGINT, signal.SIGTERM):
-            loop.add_signal_handler(sig, on_signal)
+        _install_stop_handlers(client, stopping)
         profile = await client.profile()
-        while not stopping.is_set():
-            begin, finish = next_window(
-                client.clock.now(), start, end, profile.site.timezone
-            )
-            if await _wait(stopping, begin - client.clock.now()):
-                break
-            summary = await client.night_once(begin, finish)
-            click.echo(summary.model_dump_json())
-            while summary.remaining and not stopping.is_set():
-                if await _wait(stopping, UPLOAD_RETRY):
-                    break
-                summary = await client.upload()
-                click.echo(summary.model_dump_json())
+        await daemon_loop(
+            client, start, end, profile.site.timezone, partial(_wait, stopping)
+        )
 
 
 async def _wait(stopping: asyncio.Event, delay: timedelta) -> bool:
@@ -204,5 +264,5 @@ async def _wait(stopping: asyncio.Event, delay: timedelta) -> bool:
     try:
         await asyncio.wait_for(stopping.wait(), max(delay.total_seconds(), 0))
     except TimeoutError:
-        return False
+        return stopping.is_set()
     return True

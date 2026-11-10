@@ -1,3 +1,4 @@
+import asyncio
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -158,9 +159,10 @@ async def test_stop(
     runner, _ = _runner(tmp_path, profile, driver)
     driver.script["001"] = runner.request_stop
     outcomes = await runner.run(plan)
+    # The stop interrupts item 001 while it is being observed.
     assert _reasons(outcomes) == [
         ("observed", "ok"),
-        ("observed", "ok"),
+        ("skipped", "stopped"),
         ("skipped", "stopped"),
     ]
     assert driver.park_calls == 1
@@ -245,3 +247,33 @@ async def test_crash_after_commit(
     outcomes = await runner.run(plan)
     assert _reasons(outcomes)[0] == ("observed", "ok")
     assert "000" not in driver.observed
+
+
+async def test_unexpected_driver_exception(
+    tmp_path: Path, profile: ObservatoryProfile, plan: ObservationPlan
+) -> None:
+    def explode() -> None:
+        raise ConnectionError("telescope went away")
+
+    runner, _ = _runner(tmp_path, profile, ScriptedDriver({"000": explode}))
+    outcomes = await runner.run(plan)
+    assert _reasons(outcomes)[0] == ("failed", "driver_error")
+    assert outcomes[0].detail == "telescope went away"
+    assert _reasons(outcomes)[1] == ("observed", "ok")
+
+
+async def test_stop_interrupts_current_item(
+    tmp_path: Path, profile: ObservatoryProfile, plan: ObservationPlan
+) -> None:
+    driver = ScriptedDriver({"000": lambda: "hang"})
+    runner, _ = _runner(tmp_path, profile, driver, timeout=30)
+
+    async def stop_soon() -> None:
+        await asyncio.sleep(0.1)
+        runner.request_stop()
+
+    stopper = asyncio.create_task(stop_soon())
+    outcomes = await asyncio.wait_for(runner.run(plan), 5)
+    await stopper
+    assert _reasons(outcomes) == [("skipped", "stopped")] * 3
+    assert driver.park_calls == 1

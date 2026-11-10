@@ -1,13 +1,13 @@
 import hashlib
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, override
 from uuid import UUID, uuid4
 
 import httpx
 import pytest
 
-from lcftp_client.api import LcftpAuthError
+from lcftp_client.api import LcftpApiError, LcftpAuthError
 from lcftp_client.spool import Spool
 from lcftp_client.uploader import Uploader
 from lcftp_models.checksums import compute_checksums
@@ -238,3 +238,42 @@ async def test_lost_complete_response(spool: Spool, bucket: Any) -> None:
 async def test_nothing_to_do(spool: Spool, bucket: Any) -> None:
     summary = await _uploader(FakeServer(bucket), spool, bucket).flush()
     assert summary.uploaded == summary.remaining == summary.bad == 0
+
+
+async def test_bucket_403_keeps_frames(spool: Spool, bucket: Any) -> None:
+    server = FakeServer(bucket)
+    records = [_add_frame(spool, f"frame {i}".encode()) for i in range(3)]
+    bucket.reject_next = 99
+    summary = await _uploader(server, spool, bucket).flush()
+    assert summary.bad == 0
+    assert summary.remaining == 3
+    assert spool.pending_frames() == sorted(
+        records, key=lambda r: (r.obs_start, str(r.frame_id))
+    )
+
+
+class PickyServer(FakeServer):
+    def __init__(self, bucket: Any, poison: UUID) -> None:
+        super().__init__(bucket)
+        self.poison = poison
+
+    @override
+    async def create_upload(self, manifest: UploadManifest) -> UploadTicket:
+        if any(f.frame_id == self.poison for f in manifest.frames):
+            raise LcftpApiError(
+                ErrorCode.frame_not_in_plan, "no such item", 422
+            )
+        return await super().create_upload(manifest)
+
+
+async def test_rejected_manifest_isolates_bad_frame(
+    spool: Spool, bucket: Any
+) -> None:
+    records = [_add_frame(spool, f"frame {i}".encode()) for i in range(3)]
+    server = PickyServer(bucket, records[1].frame_id)
+    summary = await _uploader(server, spool, bucket).flush()
+    assert summary.uploaded == 2
+    assert summary.bad == 1
+    assert summary.remaining == 0
+    reason = (spool.bad_dir / f"{records[1].frame_id}.reason").read_text()
+    assert "no such item" in reason

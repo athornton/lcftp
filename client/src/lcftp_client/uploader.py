@@ -1,6 +1,7 @@
 """Resumable, checksum-verified upload of spooled frames."""
 
 import asyncio
+import logging
 import random
 from collections.abc import Awaitable, Callable, Sequence
 from functools import partial
@@ -24,6 +25,8 @@ from .spool import Spool
 
 __all__ = ["UploadServer", "UploadSummary", "Uploader"]
 
+logger = logging.getLogger(__name__)
+
 
 class UploadServer(Protocol):
     """The server calls the uploader needs (see `~lcftp_client.api`)."""
@@ -46,6 +49,10 @@ class UploadSummary(BaseModel):
 
 class _GiveUpError(Exception):
     """Retries were exhausted; leave the rest for the next flush."""
+
+
+_BAD_CONTENT = 400
+"""Bucket status for a body that does not match the signed checksum."""
 
 
 class Uploader:
@@ -89,13 +96,47 @@ class Uploader:
             batches = [[]]
         for n, batch in enumerate(batches):
             try:
-                await self._upload_batch(
+                await self._upload_isolating(
                     batch, outcomes if n == 0 else [], summary
                 )
             except _GiveUpError:
                 break
         summary.remaining = len(self._spool.pending_frames())
         return summary
+
+    async def _upload_isolating(
+        self,
+        frames: Sequence[FrameRecord],
+        outcomes: Sequence[ItemOutcome],
+        summary: UploadSummary,
+    ) -> None:
+        """Upload a batch; if the server rejects it, find the culprit.
+
+        A rejected batch is retried one frame at a time, and a frame the
+        server rejects on its own is set aside as bad, so one bad frame
+        cannot block every later upload.
+        """
+        try:
+            await self._upload_batch(frames, outcomes, summary)
+        except LcftpAuthError:
+            raise
+        except LcftpApiError as e:
+            if len(frames) + len(outcomes) > 1:
+                for frame in frames:
+                    await self._upload_isolating([frame], [], summary)
+                for outcome in outcomes:
+                    await self._upload_isolating([], [outcome], summary)
+                return
+            for frame in frames:
+                self._spool.mark_bad(
+                    frame.frame_id, f"rejected by server: {e}"
+                )
+                summary.bad += 1
+            if outcomes:
+                logger.warning(
+                    "Server rejected outcome %s: %s", outcomes[0], e
+                )
+                self._spool.mark_outcomes_reported(outcomes)
 
     async def _upload_batch(
         self,
@@ -115,9 +156,9 @@ class Uploader:
             summary.already_received += 1
 
         sent = {u.frame_id for u in ticket.uploads}
-        rejected = await self._put_all(ticket.uploads)
-        if rejected:
-            await self._resend(manifest, rejected, summary)
+        failed = await self._put_all(ticket.uploads)
+        if failed:
+            await self._resend(manifest, set(failed), summary)
 
         result = await self._retry(
             lambda: self._server.complete_upload(manifest.batch_id)
@@ -141,18 +182,31 @@ class Uploader:
         frame_ids: set[UUID],
         summary: UploadSummary,
     ) -> None:
-        """Re-sign and re-upload frames once; set aside any still rejected."""
+        """Re-sign and re-upload frames once.
+
+        Frames whose content the bucket still rejects are set aside as bad.
+        Any other refusal (expired credentials, access denied) stops the
+        flush and keeps the frames for later.
+        """
         ticket = await self._retry(
             lambda: self._server.create_upload(manifest)
         )
         retry = [u for u in ticket.uploads if u.frame_id in frame_ids]
-        for frame_id in await self._put_all(retry):
-            self._spool.mark_bad(frame_id, "upload rejected by bucket twice")
-            summary.bad += 1
+        failed = await self._put_all(retry)
+        for frame_id, status in failed.items():
+            if status == _BAD_CONTENT:
+                self._spool.mark_bad(
+                    frame_id, "upload rejected by bucket twice"
+                )
+                summary.bad += 1
+        if any(status != _BAD_CONTENT for status in failed.values()):
+            raise _GiveUpError
 
-    async def _put_all(self, uploads: Sequence[SignedUpload]) -> set[UUID]:
-        """PUT each frame; return ids the bucket rejected with a 4xx."""
-        rejected = set()
+    async def _put_all(
+        self, uploads: Sequence[SignedUpload]
+    ) -> dict[UUID, int]:
+        """PUT each frame; return the 4xx status of each one refused."""
+        rejected: dict[UUID, int] = {}
         for upload in uploads:
             path = self._spool.frame_path(upload.frame_id)
             if not path.exists():
@@ -160,7 +214,7 @@ class Uploader:
             data = await asyncio.to_thread(path.read_bytes)
             response = await self._retry(partial(self._put, upload, data))
             if response.is_client_error:
-                rejected.add(upload.frame_id)
+                rejected[upload.frame_id] = response.status_code
         return rejected
 
     async def _put(self, upload: SignedUpload, data: bytes) -> httpx.Response:

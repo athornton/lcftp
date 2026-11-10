@@ -9,9 +9,12 @@ from click.testing import CliRunner
 from support_api import BASE, FakeApi
 
 from lcftp_client import cli
+from lcftp_client.api import LcftpApiError
 from lcftp_client.clock import FakeClock
 from lcftp_client.config import ClientConfig, load_config
 from lcftp_client.session import ClientStatus, LcftpClient
+from lcftp_client.uploader import UploadSummary
+from lcftp_models.errors import ErrorCode
 from lcftp_models.observatory import ObservatoryProfile
 from lcftp_models.plan import ObservationPlan
 
@@ -129,3 +132,52 @@ def test_next_window_after_end() -> None:
     start, end = cli.next_window(now, time(19), time(5), "America/Phoenix")
     assert start == datetime(2026, 11, 11, 2, tzinfo=UTC)
     assert end - start == timedelta(hours=10)
+
+
+class FakeDaemonClient:
+    def __init__(self, now: datetime, error: Exception | None = None) -> None:
+        self.clock = FakeClock(now)
+        self.nights: list[tuple[datetime, datetime]] = []
+        self.error = error
+
+    async def night_once(
+        self, start: datetime, end: datetime
+    ) -> UploadSummary:
+        self.nights.append((start, end))
+        self.clock.advance(end - self.clock.now())
+        if self.error:
+            raise self.error
+        return UploadSummary()
+
+    async def upload(self) -> UploadSummary:
+        return UploadSummary()
+
+
+async def test_daemon_waits_for_next_night() -> None:
+    now = datetime(2026, 11, 10, 6, tzinfo=UTC)  # 23:00 in Phoenix
+    client = FakeDaemonClient(now)
+    waits: list[timedelta] = []
+
+    async def wait(delay: timedelta) -> bool:
+        waits.append(delay)
+        return len(waits) > 1
+
+    await cli.daemon_loop(client, time(19), time(5), "America/Phoenix", wait)
+    assert client.nights == [(now, datetime(2026, 11, 10, 12, tzinfo=UTC))]
+    assert waits[1] == timedelta(hours=14)
+
+
+async def test_daemon_survives_errors() -> None:
+    now = datetime(2026, 11, 10, 6, tzinfo=UTC)
+    client = FakeDaemonClient(
+        now, error=LcftpApiError(ErrorCode.internal, "x", 500)
+    )
+    waits: list[timedelta] = []
+
+    async def wait(delay: timedelta) -> bool:
+        waits.append(delay)
+        return len(waits) > 2
+
+    await cli.daemon_loop(client, time(19), time(5), "America/Phoenix", wait)
+    assert len(client.nights) == 1
+    assert cli.UPLOAD_RETRY in waits
