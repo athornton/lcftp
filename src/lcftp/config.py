@@ -45,6 +45,10 @@ class Settings(BaseSettings):
     brokers: list[str] = Field(default_factory=lambda: ["alerce"])
     ingest_interval: Duration = timedelta(minutes=5)
     ingest_mag_margin: float = 0.5
+    ingest_lookback: Duration = Field(
+        timedelta(hours=1),
+        description="Overlap with the previous poll, to catch late alerts",
+    )
     candidate_max_age: Duration = timedelta(days=7)
     target_observatory_cap: int = 3
     max_frame_bytes: int = 200 * 1024**2

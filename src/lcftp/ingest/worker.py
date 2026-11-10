@@ -53,7 +53,10 @@ async def _poll_one(
         if state.next_attempt and now < state.next_attempt:
             report.skipped.append(broker.name)
             return
-        since = state.high_water_mark or now - settings.candidate_max_age
+        if state.high_water_mark:
+            since = state.high_water_mark - settings.ingest_lookback
+        else:
+            since = now - settings.candidate_max_age
         count = 0
         newest = state.high_water_mark
         try:

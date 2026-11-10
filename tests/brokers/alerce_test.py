@@ -155,3 +155,10 @@ async def test_bad_objects_are_skipped(
     messages = " ".join(r.getMessage() for r in caplog.records)
     assert "9001" in messages
     assert "9002" in messages
+
+
+async def test_page_limit_is_logged(caplog: pytest.LogCaptureFixture) -> None:
+    broker = AlerceBroker(StubAlerce(), page_delay_s=0, max_pages=1)
+    with caplog.at_level(logging.WARNING):
+        [c async for c in broker.poll(SINCE, 30.0)]
+    assert any("max_pages" in r.getMessage() for r in caplog.records)

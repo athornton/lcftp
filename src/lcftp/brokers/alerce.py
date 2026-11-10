@@ -121,6 +121,11 @@ class AlerceBroker:
                     yield candidate
             if self._page_delay_s:
                 await asyncio.sleep(self._page_delay_s)
+        logger.warning(
+            "ALeRCE poll stopped at max_pages=%d; older updates were not"
+            " fetched (raise LCFTP_BROKER_ALERCE_MAX_PAGES)",
+            self.max_pages,
+        )
 
     async def _call(self, method: Any, **kwargs: Any) -> Any:
         async with self._semaphore:

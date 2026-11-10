@@ -106,7 +106,12 @@ async def test_high_water_mark_advances(
     broker = FakeBroker([make_candidate(1, when=NOW - timedelta(hours=1))])
     await run_ingest_once([broker], sessions, settings, NOW)
     await run_ingest_once([broker], sessions, settings, NOW)
-    assert broker.polls[1][0] == NOW - timedelta(hours=1)
+    # The next poll overlaps the high-water mark to catch late detections.
+    assert (
+        broker.polls[1][0]
+        == NOW - timedelta(hours=1) - settings.ingest_lookback
+    )
+    assert settings.ingest_lookback == timedelta(hours=1)
 
 
 async def test_expires_old_candidates(
