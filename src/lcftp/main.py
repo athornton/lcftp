@@ -11,7 +11,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from lcftp_auth.auth import Auth, build_auth
 from lcftp_auth.config import AuthConfig
 
-from .api import health, observatories, pages
+from .api import health, observatories, pages, plans
 from .api.deps import SessionDep
 from .api.errors import install_error_handlers
 from .config import Settings
@@ -64,6 +64,7 @@ def create_app(
     app.include_router(health.router)
     app.include_router(auth.router)
     app.include_router(observatories.router)
+    app.include_router(plans.router)
     app.include_router(pages.router)
     return app
 

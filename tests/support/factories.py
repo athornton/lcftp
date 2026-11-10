@@ -5,12 +5,14 @@ from datetime import UTC, datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from lcftp.db.schema import ObservatoryRow
+from lcftp.stores.tokens import SqlTokenStore
 from lcftp.stores.users import SqlUserStore
 from lcftp_auth.stores import User
+from lcftp_auth.tokens import generate_token, hash_token
 from lcftp_models.observatory import ObservatoryProfile
 from lcftp_models.site import SiteLocation
 
-__all__ = ["TUCSON", "make_observatory", "make_user"]
+__all__ = ["TUCSON", "make_device", "make_observatory", "make_user"]
 
 TUCSON = SiteLocation(
     latitude=32.23,
@@ -57,3 +59,14 @@ async def make_observatory(
     )
     await session.flush()
     return profile
+
+
+async def make_device(
+    session: AsyncSession, observatory_id: str = "obs1"
+) -> dict[str, str]:
+    """Create a device token and return request headers using it."""
+    token = generate_token()
+    await SqlTokenStore(session).create(
+        observatory_id, "pi", hash_token(token)
+    )
+    return {"Authorization": f"Bearer {token}"}

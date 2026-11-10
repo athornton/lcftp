@@ -4,6 +4,7 @@ from collections.abc import AsyncIterator, Iterator
 
 import pytest
 import pytest_asyncio
+from astropy.utils import iers
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
@@ -12,6 +13,13 @@ from lcftp.config import Settings
 from lcftp.db.session import create_engine, create_sessionmaker
 from lcftp.main import create_app
 from tests.support.db import migrate, postgres_url, truncate_all
+
+
+@pytest.fixture(autouse=True, scope="session")
+def _offline_iers() -> None:
+    """Keep astropy from downloading IERS tables during tests."""
+    iers.conf.auto_download = False
+    iers.conf.auto_max_age = None
 
 
 @pytest.fixture(scope="session")
