@@ -9,7 +9,8 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from lcftp_models.errors import ErrorCode, LcftpError
 
-from .deps import SessionDep
+from ..stores.candidates import SqlCandidateStore
+from .deps import SessionDep, SettingsDep
 
 __all__ = ["router"]
 
@@ -36,11 +37,13 @@ async def health() -> Health:
 
 
 @router.get("/health/ready")
-async def ready(session: SessionDep) -> Readiness:
+async def ready(session: SessionDep, settings: SettingsDep) -> Readiness:
     """Report database health and candidate cache freshness."""
     try:
         await session.execute(text("SELECT 1"))
     except (SQLAlchemyError, OSError) as e:
         msg = "Database unavailable"
         raise LcftpError(ErrorCode.internal, msg, 503) from e
-    return Readiness(database="ok", candidates_as_of=None)
+    store = SqlCandidateStore(session)
+    as_of = await store.candidates_as_of(settings.brokers)
+    return Readiness(database="ok", candidates_as_of=as_of)

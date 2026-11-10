@@ -1,5 +1,7 @@
 """Command-line entry point for the LCFTP server."""
 
+import asyncio
+import logging
 import os
 import subprocess
 import sys
@@ -27,7 +29,11 @@ def web(host: str, port: int) -> None:
 @main.command()
 def worker() -> None:
     """Run the broker ingest worker."""
-    raise click.ClickException("The ingest worker is not implemented yet")
+    from .config import Settings  # noqa: PLC0415
+    from .ingest.worker import run_worker  # noqa: PLC0415
+
+    logging.basicConfig(level=logging.INFO)
+    asyncio.run(run_worker(Settings()))
 
 
 @main.command()
