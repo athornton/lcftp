@@ -14,6 +14,7 @@ classifiers = [
 ]
 dependencies = [
     "alembic>=1.16",
+    "alerce>=2.4",
     "asyncpg>=0.30",
     "click>=8.2",
     "fastapi>=0.120",
@@ -29,6 +30,9 @@ dynamic = ["version"]
 
 [project.scripts]
 lcftp = "lcftp.cli:main"
+
+[project.entry-points."lcftp.brokers"]
+alerce = "lcftp.brokers.alerce:create_broker"
 
 [[project.authors]]
 name = "Adam Thornton"
@@ -62,6 +66,7 @@ nox = [
 typing = [
     "mypy",
     "pydantic",
+    "types-requests",
 ]
 
 [tool.black]
