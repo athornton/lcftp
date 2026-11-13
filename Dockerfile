@@ -14,7 +14,7 @@ FROM base-image AS install-image
 RUN apt-get update \
     && apt-get -y install --no-install-recommends git \
     && rm -rf /var/lib/apt/lists/*
-COPY --from=ghcr.io/astral-sh/uv:0.13.7 /uv /bin/uv
+COPY --from=ghcr.io/astral-sh/uv:0.13.8 /uv /bin/uv
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=0
 WORKDIR /app
 RUN uv venv /opt/venv
