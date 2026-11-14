@@ -211,6 +211,9 @@ class AlerceBroker:
     ) -> Candidate | _Outcome:
         oid = resolve_field(obj, OBJECT_FIELDS, "oid")
         dia_object_id = int(str(oid))
+        lastmjd = resolve_field(obj, OBJECT_FIELDS, "lastmjd", required=False)
+        if lastmjd is not None and mjd_to_datetime(float(lastmjd)) <= since:
+            return _Outcome.FILTERED
         detections: Sequence[Mapping[str, Any]] = await self._call(
             self._client.query_detections,
             survey=_SURVEY,

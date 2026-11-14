@@ -292,3 +292,21 @@ async def test_one_bad_object_does_not_raise() -> None:
     stub = SchemaAlerce(_rename("psfFlux", "psf_flux"), oids={"1003"})
     found = [c async for c in _broker(stub).poll(SINCE, 30.0)]
     assert {c.dia_object_id for c in found} == _expected(30.0) - {1003}
+
+
+async def test_stale_objects_skip_detection_call(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    stale = {"oid": 1999, "meanra": 1.0, "meandec": 1.0, "lastmjd": 61352.0}
+    undated = {"oid": 1998, "meanra": 1.0, "meandec": 1.0}
+    stub = SchemaAlerce(lambda d: d, extra_objects=[stale, undated])
+    stub.detections["1998"] = []
+    with caplog.at_level(logging.WARNING):
+        found = [c async for c in _broker(stub).poll(SINCE, 30.0)]
+    detection_oids = {
+        k["oid"] for n, k in stub.calls if n == "query_detections"
+    }
+    assert 1999 not in detection_oids
+    assert 1998 in detection_oids
+    assert {c.dia_object_id for c in found} == _expected(30.0)
+    assert not any("1999" in r.getMessage() for r in caplog.records)
