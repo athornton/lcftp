@@ -4,8 +4,9 @@
 - **Status:** static analysis only. `api-lsst.alerce.online` and
   `api.alerce.online` are not on this environment's egress allowlist (both
   the cloud sandbox and Adam's machine return a proxy 403), so no live
-  calls were made. `docs/superpowers/notes/alerce_spike.py` repeats the
-  live checks; run it anywhere with network access and update this note.
+  calls were made. `scripts/record-alerce-fixtures.py` records live
+  responses into `tests/data/alerce/recorded/`; run it anywhere with
+  network access and update this note.
 
 ## Sources
 
