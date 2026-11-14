@@ -1,11 +1,11 @@
 # ALeRCE LSST spike (Task 2)
 
 - **Date:** 2026-11-09
-- **Status:** static analysis only. `api-lsst.alerce.online` and
-  `api.alerce.online` are not on this environment's egress allowlist (both
-  the cloud sandbox and Adam's machine return a proxy 403), so no live
-  calls were made. `docs/superpowers/notes/alerce_spike.py` repeats the
-  live checks; run it anywhere with network access and update this note.
+- **Status:** live recording 2026-11-14T01:30Z (`alerce` 2.4.0), made
+  with `scripts/record-alerce-fixtures.py` into
+  `tests/data/alerce/recorded/`. The findings below were originally static
+  analysis; the "Live results" section records what the API actually
+  returned.
 
 ## Sources
 
@@ -54,11 +54,53 @@
 5. Rate limit: no more than `concurrency` simultaneous detection calls;
    `page_delay_s` (default 0.2 s) between object pages.
 
+## Live results (2026-11-14)
+
+Recorded with a 1-day `lastmjd` window, 2 pages of 10.
+
+- **Server-side window works.** Every returned object's `lastmjd` was
+  inside the requested window and equal to its latest detection's `mjd`
+  (finding 3 confirmed).
+- **Detection field names match finding 4.** `mjd`, `psfFlux` (nJy),
+  `ra`, `dec`, `measurement_id`, `band` (int) and `band_name` are all
+  present; no field-table changes were needed. Detections also carry
+  `diaObjectId`, `midpointMjdTai` is absent, and `measurement_id` is a
+  diaSourceId-sized integer.
+- **`oid` is the `diaObjectId`** (finding 5 verified): every recorded
+  detection's `diaObjectId` equals its object's `oid`. The single-object
+  endpoint (`object.json`) does not carry a `diaObjectId` key.
+- **The object list has one row per (object, classifier).** 20 rows were
+  15 distinct objects: the `stamp_classifier_rubin_beta` and
+  `stamp_classifier_rubin_beta_20260421` classifiers each contribute a
+  row. The plugin keeps one row per `oid` per poll (the highest
+  `classifier_version` on the page), so each object costs one detections
+  call.
+- **Rows carry a classification**: `class_name` (seen: `AGN`, `VS`,
+  `bogus`), `classifier_name`, `classifier_version`, `probability`. 3 of
+  15 objects were `bogus`. The plugin drops `bogus` objects before
+  fetching their detections, and fills `Candidate.classification` /
+  `score` from `class_name` / `probability`.
+- **Negative PSF flux is common** (8 of 15 latest detections): difference
+  imaging reports fading sources as negative flux. The plugin skips them
+  (correct for a "brighter than" filter) but logs each at WARNING.
+- All 15 objects were faint (the brightest positive-flux latest detection
+  was ~21.2 mag in `i`), so a typical amateur `mag_limit` keeps none of
+  this sample.
+
 ## Consequence
 
-At ~100 objects per page this is 1 + 100 calls per page. If the live API
-shows thousands of updated objects per 5-minute interval, a stream-based
-broker (Fink/Lasair Kafka, or ALeRCE's stream) should move up the
-priority list. The fixtures in `tests/data/alerce/` are **synthetic**,
-shaped per the findings above, and must be replaced with recorded
-responses once the live spike runs.
+At ~100 objects per page this is 1 + 100 calls per page. Measured
+2026-11-14 (`count=true`): **53,888 object rows** had `lastmjd` in the
+previous 24 hours (about 27,000 distinct objects after the
+two-classifier duplication), an average of ~190 rows per 5-minute ingest
+interval, while the most recent 5 minutes held none (ALeRCE ingestion
+lags real time and is bursty). An average poll is therefore ~2 pages and
+~100 detections calls; a night-time burst can hit `max_pages`
+(5,000 rows). Because there is no server-side brightness filter, almost
+all of those calls are for objects fainter than any amateur limit, so a
+stream-based broker (Fink/Lasair Kafka, or ALeRCE's stream) with a
+magnitude filter remains the better long-term source.
+
+The fixtures directly in `tests/data/alerce/` are **synthetic** edge-case
+fixtures and are kept on purpose; `tests/data/alerce/recorded/` holds the
+live recording.

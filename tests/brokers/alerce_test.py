@@ -1,42 +1,27 @@
 import json
 import logging
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from importlib.metadata import entry_points
-from pathlib import Path
 from typing import Any, override
 
 import pytest
 import requests
 
-from lcftp.brokers.alerce import AlerceBroker, create_broker, mjd_to_datetime
+from lcftp.brokers.alerce import (
+    DETECTION_FIELDS,
+    AlerceBroker,
+    MissingFieldError,
+    create_broker,
+    mjd_to_datetime,
+    resolve_field,
+)
 from lcftp.brokers.base import BrokerUnavailableError
 from lcftp.brokers.testing import assert_broker_contract
 from lcftp.photometry import flux_njy_to_ab_mag
+from tests.support.alerce import DATA, StubAlerce
 
-DATA = Path(__file__).parent.parent / "data" / "alerce"
 SINCE = mjd_to_datetime(61353.0)
-
-
-class StubAlerce:
-    """Replays the recorded fixtures in place of ``alerce.core.Alerce``."""
-
-    def __init__(self, error: Exception | None = None) -> None:
-        self.error = error
-        self.calls: list[tuple[str, dict[str, Any]]] = []
-        self.detections = json.loads((DATA / "detections.json").read_text())[
-            "detections"
-        ]
-
-    def query_objects(self, **kwargs: Any) -> list[dict[str, Any]]:
-        self.calls.append(("query_objects", kwargs))
-        if self.error:
-            raise self.error
-        path = DATA / f"objects_page{kwargs['page']}.json"
-        return json.loads(path.read_text())["items"] if path.exists() else []
-
-    def query_detections(self, **kwargs: Any) -> list[dict[str, Any]]:
-        self.calls.append(("query_detections", kwargs))
-        return self.detections[str(kwargs["oid"])]
 
 
 def _expected(mag_limit: float) -> set[int]:
@@ -95,13 +80,13 @@ async def test_network_error_is_unavailable() -> None:
         [c async for c in _broker(stub).poll(SINCE, 30.0)]
 
 
-async def test_bad_flux_is_skipped_with_warning(
+async def test_negative_flux_is_skipped_quietly(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     with caplog.at_level(logging.WARNING):
         found = [c async for c in _broker(StubAlerce()).poll(SINCE, 30.0)]
     assert 1005 not in {c.dia_object_id for c in found}
-    assert any("1005" in r.getMessage() for r in caplog.records)
+    assert not any("1005" in r.getMessage() for r in caplog.records)
 
 
 def test_mjd_round_trip() -> None:
@@ -162,3 +147,328 @@ async def test_page_limit_is_logged(caplog: pytest.LogCaptureFixture) -> None:
     with caplog.at_level(logging.WARNING):
         [c async for c in broker.poll(SINCE, 30.0)]
     assert any("max_pages" in r.getMessage() for r in caplog.records)
+
+
+def test_resolve_field_reports_logical_name_and_keys() -> None:
+    with pytest.raises(MissingFieldError) as e:
+        resolve_field({"psf_flux": 1.0, "mjd": 1.0}, DETECTION_FIELDS, "flux")
+    assert e.value.field == "flux"
+    assert e.value.keys == ["mjd", "psf_flux"]
+    assert "flux" in str(e.value)
+    assert "psf_flux" in str(e.value)
+
+
+def test_resolve_field_optional_returns_none() -> None:
+    assert (
+        resolve_field({}, DETECTION_FIELDS, "alert_id", required=False) is None
+    )
+
+
+def test_resolve_field_uses_fallback_names() -> None:
+    assert (
+        resolve_field({"midpointMjdTai": 5.0}, DETECTION_FIELDS, "mjd") == 5.0
+    )
+
+
+Transform = Callable[[dict[str, Any]], dict[str, Any]]
+
+
+def _rename(old: str, new: str) -> Transform:
+    def transform(det: dict[str, Any]) -> dict[str, Any]:
+        det = dict(det)
+        det[new] = det.pop(old)
+        return det
+
+    return transform
+
+
+def _drop(*names: str) -> Transform:
+    def transform(det: dict[str, Any]) -> dict[str, Any]:
+        return {k: v for k, v in det.items() if k not in names}
+
+    return transform
+
+
+class SchemaAlerce(StubAlerce):
+    """Rewrites detections (for some oids) and optionally adds objects."""
+
+    def __init__(
+        self,
+        transform: Transform,
+        *,
+        oids: set[str] | None = None,
+        extra_objects: list[dict[str, Any]] | None = None,
+        oid_as_string: bool = False,
+    ) -> None:
+        super().__init__()
+        self.transform = transform
+        self.oids = oids
+        self.extra_objects = extra_objects or []
+        self.oid_as_string = oid_as_string
+
+    @override
+    def query_objects(self, **kwargs: Any) -> list[dict[str, Any]]:
+        objects = super().query_objects(**kwargs)
+        if self.oid_as_string:
+            objects = [{**o, "oid": str(o["oid"])} for o in objects]
+        if kwargs["page"] == 1:
+            objects = [*self.extra_objects, *objects]
+        return objects
+
+    @override
+    def query_detections(self, **kwargs: Any) -> list[dict[str, Any]]:
+        dets = super().query_detections(**kwargs)
+        if self.oids is None or str(kwargs["oid"]) in self.oids:
+            dets = [self.transform(d) for d in dets]
+        return dets
+
+
+async def test_missing_band_is_skipped_not_stored_as_none(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    stub = SchemaAlerce(_drop("band", "band_name"), oids={"1003"})
+    with caplog.at_level(logging.WARNING):
+        found = [c async for c in _broker(stub).poll(SINCE, 30.0)]
+    assert 1003 not in {c.dia_object_id for c in found}
+    assert all(c.band != "None" for c in found)
+    assert any(
+        "1003" in r.getMessage() and "band" in r.getMessage()
+        for r in caplog.records
+    )
+
+
+async def test_string_oid_is_converted() -> None:
+    stub = SchemaAlerce(lambda d: d, oid_as_string=True)
+    found = [c async for c in _broker(stub).poll(SINCE, 30.0)]
+    assert {c.dia_object_id for c in found} == _expected(30.0)
+
+
+async def test_non_numeric_oid_is_skipped(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    stub = SchemaAlerce(
+        lambda d: d,
+        extra_objects=[{"oid": "ZTF26abc", "meanra": 1.0, "meandec": 1.0}],
+    )
+    stub.detections["ZTF26abc"] = stub.detections["1003"]
+    with caplog.at_level(logging.WARNING):
+        found = [c async for c in _broker(stub).poll(SINCE, 30.0)]
+    assert {c.dia_object_id for c in found} == _expected(30.0)
+    assert any("ZTF26abc" in r.getMessage() for r in caplog.records)
+
+
+async def test_renamed_field_on_every_object_raises_unavailable() -> None:
+    stub = SchemaAlerce(_rename("psfFlux", "psf_flux"))
+    with pytest.raises(BrokerUnavailableError) as e:
+        [c async for c in _broker(stub).poll(SINCE, 30.0)]
+    assert "flux" in str(e.value)
+    assert "psf_flux" in str(e.value)
+
+
+async def test_one_bad_object_does_not_raise() -> None:
+    stub = SchemaAlerce(_rename("psfFlux", "psf_flux"), oids={"1003"})
+    found = [c async for c in _broker(stub).poll(SINCE, 30.0)]
+    assert {c.dia_object_id for c in found} == _expected(30.0) - {1003}
+
+
+async def test_stale_objects_skip_detection_call(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    stale = {"oid": 1999, "meanra": 1.0, "meandec": 1.0, "lastmjd": 61352.0}
+    undated = {"oid": 1998, "meanra": 1.0, "meandec": 1.0}
+    stub = SchemaAlerce(lambda d: d, extra_objects=[stale, undated])
+    stub.detections["1998"] = []
+    with caplog.at_level(logging.WARNING):
+        found = [c async for c in _broker(stub).poll(SINCE, 30.0)]
+    detection_oids = {
+        k["oid"] for n, k in stub.calls if n == "query_detections"
+    }
+    assert 1999 not in detection_oids
+    assert 1998 in detection_oids
+    assert {c.dia_object_id for c in found} == _expected(30.0)
+    assert not any("1999" in r.getMessage() for r in caplog.records)
+
+
+class RepeatingAlerce(StubAlerce):
+    """Page 2 repeats page 1, as when classifier rows straddle pages."""
+
+    @override
+    def query_objects(self, **kwargs: Any) -> list[dict[str, Any]]:
+        if kwargs["page"] == 2:
+            kwargs = {**kwargs, "page": 1}
+        return super().query_objects(**kwargs)
+
+
+async def test_page_of_only_duplicates_is_not_a_schema_error() -> None:
+    stub = RepeatingAlerce()
+    found = [c async for c in _broker(stub).poll(SINCE, 30.0)]
+    page1 = {1001, 1002, 1003, 1004}
+    assert {c.dia_object_id for c in found} == _expected(30.0) & page1
+
+
+class PagesAlerce(StubAlerce):
+    """Serves explicit pages of objects; detections from ``extra`` first."""
+
+    def __init__(
+        self,
+        pages: list[list[dict[str, Any]]],
+        extra: dict[str, list[dict[str, Any]]],
+        *,
+        failing: set[int] | None = None,
+        transform: Transform | None = None,
+    ) -> None:
+        super().__init__()
+        self.pages = pages
+        self.detections.update(extra)
+        self.failing = failing or set()
+        self.transform = transform
+
+    @override
+    def query_objects(self, **kwargs: Any) -> list[dict[str, Any]]:
+        self.calls.append(("query_objects", kwargs))
+        page = kwargs["page"]
+        return self.pages[page - 1] if page <= len(self.pages) else []
+
+    @override
+    def query_detections(self, **kwargs: Any) -> list[dict[str, Any]]:
+        if int(kwargs["oid"]) in self.failing:
+            raise requests.ConnectionError("timeout")
+        dets = super().query_detections(**kwargs)
+        return [self.transform(d) for d in dets] if self.transform else dets
+
+
+def _page(*oids: int) -> list[dict[str, Any]]:
+    objects = {
+        o["oid"]: o
+        for n in (1, 2)
+        for o in json.loads((DATA / f"objects_page{n}.json").read_text())[
+            "items"
+        ]
+    }
+    return [objects[oid] for oid in oids]
+
+
+def _det(oid: int, **values: Any) -> dict[str, Any]:
+    det = {
+        "oid": oid,
+        "measurement_id": oid * 100,
+        "mjd": 61353.5,
+        "band_name": "r",
+        "psfFlux": 1e6,
+        "ra": 10.0,
+        "dec": 10.0,
+    }
+    return {**det, **values}
+
+
+def _obj(oid: int, **values: Any) -> dict[str, Any]:
+    return {"oid": oid, "meanra": 10.0, "meandec": 10.0, **values}
+
+
+async def test_null_flux_on_lone_new_object_is_not_an_outage() -> None:
+    stub = PagesAlerce(
+        [_page(1001, 1002, 1003, 1004), [*_page(1001, 1002), _obj(2001)]],
+        {"2001": [_det(2001, psfFlux=None)]},
+    )
+    found = [c async for c in _broker(stub).poll(SINCE, 30.0)]
+    assert {c.dia_object_id for c in found} == _expected(30.0) & {
+        1001,
+        1002,
+        1003,
+        1004,
+    }
+
+
+async def test_unusable_values_are_skipped_without_outage(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    stub = PagesAlerce(
+        [
+            [
+                _obj(2001),
+                _obj(2002),
+                _obj(2003, meanra=None, meandec=None),
+            ]
+        ],
+        {
+            "2001": [_det(2001, psfFlux=float("nan"))],
+            "2002": [_det(2002, psfFlux=None)],
+            "2003": [_det(2003, ra=None, dec=None)],
+        },
+    )
+    with caplog.at_level(logging.WARNING):
+        found = [c async for c in _broker(stub).poll(SINCE, 30.0)]
+    assert found == []
+    assert any("2001" in r.getMessage() for r in caplog.records)
+
+
+async def test_rename_masked_by_failed_fetches_still_raises() -> None:
+    stub = PagesAlerce(
+        [_page(1001, 1002, 1003, 1004), _page(1005, 1006)],
+        {},
+        failing={1001, 1005},
+        transform=_rename("psfFlux", "psf_flux"),
+    )
+    with pytest.raises(BrokerUnavailableError) as e:
+        [c async for c in _broker(stub).poll(SINCE, 30.0)]
+    assert "psf_flux" in str(e.value)
+
+
+async def test_band_code_is_not_used_as_band_name() -> None:
+    stub = SchemaAlerce(_drop("band_name"), oids={"1003"})
+    found = [c async for c in _broker(stub).poll(SINCE, 30.0)]
+    assert 1003 not in {c.dia_object_id for c in found}
+    assert all(c.band.isalpha() for c in found)
+
+
+def _classified(
+    oid: int, class_name: str, probability: float, version: str
+) -> dict[str, Any]:
+    (row,) = _page(oid)
+    return {
+        **row,
+        "class_name": class_name,
+        "probability": probability,
+        "classifier_name": "stamp_classifier_rubin_beta",
+        "classifier_version": version,
+    }
+
+
+async def test_classification_fills_candidate() -> None:
+    stub = PagesAlerce(
+        [[_classified(1003, "SN", 0.8, "2.0.2"), *_page(1002)]], {}
+    )
+    found = {c.dia_object_id: c async for c in _broker(stub).poll(SINCE, 30.0)}
+    assert found[1003].classification == "SN"
+    assert found[1003].score == pytest.approx(0.8)
+    assert found[1002].classification is None
+    assert found[1002].score is None
+
+
+async def test_bogus_objects_are_dropped_without_detections_call() -> None:
+    stub = PagesAlerce([[_classified(1003, "bogus", 0.7, "2.0.2")]], {})
+    found = [c async for c in _broker(stub).poll(SINCE, 30.0)]
+    assert found == []
+    assert not [k for n, k in stub.calls if n == "query_detections"]
+
+
+@pytest.mark.parametrize(
+    ("rows", "expected"),
+    [
+        ([("AGN", 0.9, "2.0.1"), ("VS", 0.5, "2.0.2")], ("VS", 0.5)),
+        ([("VS", 0.5, "2.0.10"), ("AGN", 0.9, "2.0.9")], ("VS", 0.5)),
+        ([("bogus", 0.9, "2.0.1"), ("AGN", 0.6, "2.0.2")], ("AGN", 0.6)),
+        ([("AGN", 0.9, "2.0.1"), ("bogus", 0.6, "2.0.2")], None),
+    ],
+)
+async def test_newest_classifier_row_wins(
+    rows: list[tuple[str, float, str]], expected: tuple[str, float] | None
+) -> None:
+    page = [_classified(1003, *row) for row in rows]
+    stub = PagesAlerce([page], {})
+    found = {c.dia_object_id: c async for c in _broker(stub).poll(SINCE, 30.0)}
+    if expected is None:
+        assert 1003 not in found
+    else:
+        assert found[1003].classification == expected[0]
+        assert found[1003].score == pytest.approx(expected[1])
