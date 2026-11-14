@@ -109,11 +109,17 @@ def test_resolve_field_reports_logical_name_and_keys() -> None:
     assert e.value.keys == ["mjd", "psf_flux"]
     assert "flux" in str(e.value) and "psf_flux" in str(e.value)
 
+
 def test_resolve_field_optional_returns_none() -> None:
-    assert resolve_field({}, DETECTION_FIELDS, "alert_id", required=False) is None
+    assert (
+        resolve_field({}, DETECTION_FIELDS, "alert_id", required=False) is None
+    )
+
 
 def test_resolve_field_uses_fallback_names() -> None:
-    assert resolve_field({"midpointMjdTai": 5.0}, DETECTION_FIELDS, "mjd") == 5.0
+    assert (
+        resolve_field({"midpointMjdTai": 5.0}, DETECTION_FIELDS, "mjd") == 5.0
+    )
 ```
 
 Plus a `SchemaAlerce(StubAlerce)` subclass whose `query_detections`
