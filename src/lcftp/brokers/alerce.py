@@ -147,6 +147,8 @@ class AlerceBroker:
             datetime_to_mjd(since),
             datetime_to_mjd(datetime.now(tz=UTC)),
         ]
+        # ALeRCE lists an object once per classifier that classified it.
+        seen: set[str] = set()
         for page in range(1, self.max_pages + 1):
             objects = await self._call(
                 self._client.query_objects,
@@ -160,13 +162,20 @@ class AlerceBroker:
             )
             if not objects:
                 return
+            unique = []
+            for obj in objects:
+                oid = obj.get("oid")
+                if oid is None or str(oid) not in seen:
+                    unique.append(obj)
+                    if oid is not None:
+                        seen.add(str(oid))
             results = await asyncio.gather(
-                *(self._safe_candidate(o, since, mag_limit) for o in objects)
+                *(self._safe_candidate(o, since, mag_limit) for o in unique)
             )
             schema_errors = [
                 r for r in results if isinstance(r, MissingFieldError)
             ]
-            if len(schema_errors) == len(results):
+            if results and len(schema_errors) == len(results):
                 msg = f"ALeRCE response schema changed: {schema_errors[0]}"
                 raise BrokerUnavailableError(msg)
             for result in results:

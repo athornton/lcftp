@@ -3,7 +3,6 @@ import logging
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from importlib.metadata import entry_points
-from pathlib import Path
 from typing import Any, override
 
 import pytest
@@ -20,31 +19,9 @@ from lcftp.brokers.alerce import (
 from lcftp.brokers.base import BrokerUnavailableError
 from lcftp.brokers.testing import assert_broker_contract
 from lcftp.photometry import flux_njy_to_ab_mag
+from tests.support.alerce import DATA, StubAlerce
 
-DATA = Path(__file__).parent.parent / "data" / "alerce"
 SINCE = mjd_to_datetime(61353.0)
-
-
-class StubAlerce:
-    """Replays the recorded fixtures in place of ``alerce.core.Alerce``."""
-
-    def __init__(self, error: Exception | None = None) -> None:
-        self.error = error
-        self.calls: list[tuple[str, dict[str, Any]]] = []
-        self.detections = json.loads((DATA / "detections.json").read_text())[
-            "detections"
-        ]
-
-    def query_objects(self, **kwargs: Any) -> list[dict[str, Any]]:
-        self.calls.append(("query_objects", kwargs))
-        if self.error:
-            raise self.error
-        path = DATA / f"objects_page{kwargs['page']}.json"
-        return json.loads(path.read_text())["items"] if path.exists() else []
-
-    def query_detections(self, **kwargs: Any) -> list[dict[str, Any]]:
-        self.calls.append(("query_detections", kwargs))
-        return self.detections[str(kwargs["oid"])]
 
 
 def _expected(mag_limit: float) -> set[int]:
@@ -310,3 +287,20 @@ async def test_stale_objects_skip_detection_call(
     assert 1998 in detection_oids
     assert {c.dia_object_id for c in found} == _expected(30.0)
     assert not any("1999" in r.getMessage() for r in caplog.records)
+
+
+class RepeatingAlerce(StubAlerce):
+    """Page 2 repeats page 1, as when classifier rows straddle pages."""
+
+    @override
+    def query_objects(self, **kwargs: Any) -> list[dict[str, Any]]:
+        if kwargs["page"] == 2:
+            kwargs = {**kwargs, "page": 1}
+        return super().query_objects(**kwargs)
+
+
+async def test_page_of_only_duplicates_is_not_a_schema_error() -> None:
+    stub = RepeatingAlerce()
+    found = [c async for c in _broker(stub).poll(SINCE, 30.0)]
+    page1 = {1001, 1002, 1003, 1004}
+    assert {c.dia_object_id for c in found} == _expected(30.0) & page1
