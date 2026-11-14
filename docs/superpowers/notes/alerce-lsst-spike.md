@@ -72,11 +72,14 @@ Recorded with a 1-day `lastmjd` window, 2 pages of 10.
 - **The object list has one row per (object, classifier).** 20 rows were
   15 distinct objects: the `stamp_classifier_rubin_beta` and
   `stamp_classifier_rubin_beta_20260421` classifiers each contribute a
-  row. The plugin now de-duplicates by `oid` within a poll, so each
-  object costs one detections call.
+  row. The plugin keeps one row per `oid` per poll (the highest
+  `classifier_version` on the page), so each object costs one detections
+  call.
 - **Rows carry a classification**: `class_name` (seen: `AGN`, `VS`,
   `bogus`), `classifier_name`, `classifier_version`, `probability`. 3 of
-  15 objects were `bogus`. Nothing uses this yet.
+  15 objects were `bogus`. The plugin drops `bogus` objects before
+  fetching their detections, and fills `Candidate.classification` /
+  `score` from `class_name` / `probability`.
 - **Negative PSF flux is common** (8 of 15 latest detections): difference
   imaging reports fading sources as negative flux. The plugin skips them
   (correct for a "brighter than" filter) but logs each at WARNING.

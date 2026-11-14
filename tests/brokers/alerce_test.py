@@ -419,3 +419,56 @@ async def test_band_code_is_not_used_as_band_name() -> None:
     found = [c async for c in _broker(stub).poll(SINCE, 30.0)]
     assert 1003 not in {c.dia_object_id for c in found}
     assert all(c.band.isalpha() for c in found)
+
+
+def _classified(
+    oid: int, class_name: str, probability: float, version: str
+) -> dict[str, Any]:
+    (row,) = _page(oid)
+    return {
+        **row,
+        "class_name": class_name,
+        "probability": probability,
+        "classifier_name": "stamp_classifier_rubin_beta",
+        "classifier_version": version,
+    }
+
+
+async def test_classification_fills_candidate() -> None:
+    stub = PagesAlerce(
+        [[_classified(1003, "SN", 0.8, "2.0.2"), *_page(1002)]], {}
+    )
+    found = {c.dia_object_id: c async for c in _broker(stub).poll(SINCE, 30.0)}
+    assert found[1003].classification == "SN"
+    assert found[1003].score == pytest.approx(0.8)
+    assert found[1002].classification is None
+    assert found[1002].score is None
+
+
+async def test_bogus_objects_are_dropped_without_detections_call() -> None:
+    stub = PagesAlerce([[_classified(1003, "bogus", 0.7, "2.0.2")]], {})
+    found = [c async for c in _broker(stub).poll(SINCE, 30.0)]
+    assert found == []
+    assert not [k for n, k in stub.calls if n == "query_detections"]
+
+
+@pytest.mark.parametrize(
+    ("rows", "expected"),
+    [
+        ([("AGN", 0.9, "2.0.1"), ("VS", 0.5, "2.0.2")], ("VS", 0.5)),
+        ([("VS", 0.5, "2.0.10"), ("AGN", 0.9, "2.0.9")], ("VS", 0.5)),
+        ([("bogus", 0.9, "2.0.1"), ("AGN", 0.6, "2.0.2")], ("AGN", 0.6)),
+        ([("AGN", 0.9, "2.0.1"), ("bogus", 0.6, "2.0.2")], None),
+    ],
+)
+async def test_newest_classifier_row_wins(
+    rows: list[tuple[str, float, str]], expected: tuple[str, float] | None
+) -> None:
+    page = [_classified(1003, *row) for row in rows]
+    stub = PagesAlerce([page], {})
+    found = {c.dia_object_id: c async for c in _broker(stub).poll(SINCE, 30.0)}
+    if expected is None:
+        assert 1003 not in found
+    else:
+        assert found[1003].classification == expected[0]
+        assert found[1003].score == pytest.approx(expected[1])

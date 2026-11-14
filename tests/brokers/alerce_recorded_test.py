@@ -77,6 +77,16 @@ async def test_recorded_golden_candidate() -> None:
     assert c.latest_alert_time == mjd_to_datetime(EXPECTED["mjd"])
     assert c.mag == pytest.approx(EXPECTED["mag"], abs=1e-6)
     assert c.sources[0].broker_object_id == str(EXPECTED["oid"])
+    assert c.classification == EXPECTED["classification"]
+    assert c.score == pytest.approx(EXPECTED["score"])
+
+
+async def test_recorded_bogus_objects_are_dropped() -> None:
+    bogus = {o["oid"] for o in _objects() if o["class_name"] == "bogus"}
+    assert bogus, "recording no longer has bogus objects"
+    stub = StubAlerce(data=RECORDED)
+    found = {c.dia_object_id async for c in _broker(stub).poll(SINCE, 40.0)}
+    assert not found & bogus
 
 
 async def test_recorded_replay_passes_broker_contract() -> None:
@@ -94,7 +104,8 @@ async def test_duplicate_object_rows_fetch_detections_once() -> None:
     fetched = Counter(
         k["oid"] for n, k in stub.calls if n == "query_detections"
     )
-    assert set(fetched) == set(oids)
+    bogus = {o["oid"] for o in _objects() if o["class_name"] == "bogus"}
+    assert set(fetched) == set(oids) - bogus
     assert max(fetched.values()) == 1
     ids = [c.dia_object_id for c in found]
     assert len(ids) == len(set(ids))

@@ -1,10 +1,12 @@
 {
- "_comment": "Hand-copied from objects_page1.json[1] and its latest detection; mag = 31.4 - 2.5*log10(12029.228)",
+ "_comment": "Hand-copied from objects_page1.json[1] and its latest detection; mag = 31.4 - 2.5*log10(12029.228); classification/score from the object row's class_name/probability",
  "alert_id": "171207168546045979",
  "band": "i",
+ "classification": "AGN",
  "dec": -45.92368231167144,
  "mag": 21.199405608728167,
  "mjd": 61358.05478597342,
  "oid": 171207168546045979,
- "ra": 8.171613306346634
+ "ra": 8.171613306346634,
+ "score": 0.61802274
 }

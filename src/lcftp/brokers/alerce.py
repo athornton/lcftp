@@ -33,6 +33,8 @@ __all__ = [
 
 _MJD_EPOCH = datetime(1858, 11, 17, tzinfo=UTC)
 _SURVEY = "lsst"
+_REJECTED_CLASSES = frozenset({"bogus"})
+"""Classes whose objects are dropped before fetching detections."""
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +64,9 @@ OBJECT_FIELDS: Mapping[str, tuple[str, ...]] = {
     "ra": ("meanra",),
     "dec": ("meandec",),
     "lastmjd": ("lastmjd",),
+    "class": ("class_name",),
+    "score": ("probability",),
+    "classifier_version": ("classifier_version",),
 }
 """ALeRCE object-list field names for each logical field, in priority order."""
 
@@ -117,6 +122,45 @@ def resolve_field(
     raise MissingFieldError(logical, sorted(record))
 
 
+def _classifier_version(obj: Mapping[str, Any]) -> tuple[int, ...]:
+    """Sort key for an object row's classifier version (``"2.0.10"``)."""
+    raw = resolve_field(
+        obj, OBJECT_FIELDS, "classifier_version", required=False
+    )
+    try:
+        return tuple(int(part) for part in str(raw).split("."))
+    except ValueError:
+        return ()
+
+
+def _newest_rows(
+    objects: Sequence[Mapping[str, Any]], seen: set[str]
+) -> list[Mapping[str, Any]]:
+    """Keep one row per object not in ``seen``: the newest classifier's.
+
+    ALeRCE lists an object once per classifier that classified it. Rows
+    without an oid are kept so they fail field resolution visibly. Rows of
+    one object split across pages are not merged; the first page wins.
+    """
+    rows: list[Mapping[str, Any]] = []
+    best: dict[str, int] = {}
+    for obj in objects:
+        oid = obj.get("oid")
+        if oid is None:
+            rows.append(obj)
+            continue
+        key = str(oid)
+        if key in seen:
+            continue
+        if key not in best:
+            best[key] = len(rows)
+            rows.append(obj)
+        elif _classifier_version(obj) > _classifier_version(rows[best[key]]):
+            rows[best[key]] = obj
+    seen.update(best)
+    return rows
+
+
 class _Outcome(Enum):
     SKIPPED = "skipped"
     """Dropped before its fields were resolved."""
@@ -168,7 +212,6 @@ class AlerceBroker:
             datetime_to_mjd(since),
             datetime_to_mjd(datetime.now(tz=UTC)),
         ]
-        # ALeRCE lists an object once per classifier that classified it.
         seen: set[str] = set()
         schema_error: MissingFieldError | None = None
         resolved = 0
@@ -185,13 +228,7 @@ class AlerceBroker:
             )
             if not objects:
                 break
-            unique = []
-            for obj in objects:
-                oid = obj.get("oid")
-                if oid is None or str(oid) not in seen:
-                    unique.append(obj)
-                    if oid is not None:
-                        seen.add(str(oid))
+            unique = _newest_rows(objects, seen)
             results = await asyncio.gather(
                 *(self._safe_candidate(o, since, mag_limit) for o in unique)
             )
@@ -260,6 +297,13 @@ class AlerceBroker:
                 "Skipping ALeRCE object %s: oid is not numeric", oid
             )
             return _Outcome.SKIPPED
+        classification = resolve_field(
+            obj, OBJECT_FIELDS, "class", required=False
+        )
+        if classification in _REJECTED_CLASSES:
+            logger.debug("Skipping ALeRCE object %s: %s", oid, classification)
+            return _Outcome.SKIPPED
+        score = resolve_field(obj, OBJECT_FIELDS, "score", required=False)
         lastmjd = resolve_field(obj, OBJECT_FIELDS, "lastmjd", required=False)
         if lastmjd is not None and mjd_to_datetime(float(lastmjd)) <= since:
             return _Outcome.SKIPPED
@@ -310,6 +354,10 @@ class AlerceBroker:
             dec=float(dec),
             mag=mag,
             band=band,
+            classification=(
+                str(classification) if classification is not None else None
+            ),
+            score=float(score) if score is not None else None,
             first_seen=now,
             last_updated=now,
         )
