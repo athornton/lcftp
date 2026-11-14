@@ -7,6 +7,7 @@ ALeRCE's response format is confined to the ``_field`` accessors here.
 
 import asyncio
 import logging
+import math
 from collections.abc import AsyncIterator, Mapping, Sequence
 from datetime import UTC, datetime, timedelta
 from enum import Enum
@@ -23,6 +24,7 @@ __all__ = [
     "OBJECT_FIELDS",
     "AlerceBroker",
     "MissingFieldError",
+    "NullFieldError",
     "create_broker",
     "datetime_to_mjd",
     "mjd_to_datetime",
@@ -69,7 +71,7 @@ DETECTION_FIELDS: Mapping[str, tuple[str, ...]] = {
     "ra": ("ra",),
     "dec": ("dec",),
     "alert_id": ("measurement_id", "diaSourceId", "candid"),
-    "band": ("band_name", "band"),
+    "band": ("band_name",),
 }
 """ALeRCE detection field names for each logical field, in priority order."""
 
@@ -83,6 +85,14 @@ class MissingFieldError(ValueError):
         super().__init__(f"no {field!r} field; record keys: {keys}")
 
 
+class NullFieldError(ValueError):
+    """An ALeRCE record has a logical field, but its value is null."""
+
+    def __init__(self, field: str) -> None:
+        self.field = field
+        super().__init__(f"{field!r} is null")
+
+
 def resolve_field(
     record: Mapping[str, Any],
     fields: Mapping[str, tuple[str, ...]],
@@ -90,18 +100,29 @@ def resolve_field(
     *,
     required: bool = True,
 ) -> Any:
-    """Return the first non-null value among a logical field's names."""
-    for name in fields[logical]:
+    """Return the first non-null value among a logical field's names.
+
+    A required field raises `MissingFieldError` when none of its names is a
+    key (the response schema has changed) and `NullFieldError` when a name
+    is present but every value is null (this record lacks the data).
+    """
+    names = fields[logical]
+    for name in names:
         if record.get(name) is not None:
             return record[name]
-    if required:
-        raise MissingFieldError(logical, sorted(record))
-    return None
+    if not required:
+        return None
+    if any(name in record for name in names):
+        raise NullFieldError(logical)
+    raise MissingFieldError(logical, sorted(record))
 
 
 class _Outcome(Enum):
+    SKIPPED = "skipped"
+    """Dropped before its fields were resolved."""
+
     FILTERED = "filtered"
-    SCHEMA = "schema"
+    """Fields resolved, but the object is unusable or not wanted."""
 
 
 class AlerceBroker:
@@ -149,6 +170,8 @@ class AlerceBroker:
         ]
         # ALeRCE lists an object once per classifier that classified it.
         seen: set[str] = set()
+        schema_error: MissingFieldError | None = None
+        resolved = 0
         for page in range(1, self.max_pages + 1):
             objects = await self._call(
                 self._client.query_objects,
@@ -161,7 +184,7 @@ class AlerceBroker:
                 page_size=self.page_size,
             )
             if not objects:
-                return
+                break
             unique = []
             for obj in objects:
                 oid = obj.get("oid")
@@ -172,22 +195,29 @@ class AlerceBroker:
             results = await asyncio.gather(
                 *(self._safe_candidate(o, since, mag_limit) for o in unique)
             )
-            schema_errors = [
-                r for r in results if isinstance(r, MissingFieldError)
-            ]
-            if results and len(schema_errors) == len(results):
-                msg = f"ALeRCE response schema changed: {schema_errors[0]}"
-                raise BrokerUnavailableError(msg)
             for result in results:
+                if isinstance(result, MissingFieldError):
+                    schema_error = schema_error or result
+                elif result is not _Outcome.SKIPPED:
+                    resolved += 1
                 if isinstance(result, Candidate):
                     yield result
             if self._page_delay_s:
                 await asyncio.sleep(self._page_delay_s)
-        logger.warning(
-            "ALeRCE poll stopped at max_pages=%d; older updates were not"
-            " fetched (raise LCFTP_BROKER_ALERCE_MAX_PAGES)",
-            self.max_pages,
-        )
+        else:
+            logger.warning(
+                "ALeRCE poll stopped at max_pages=%d; older updates were not"
+                " fetched (raise LCFTP_BROKER_ALERCE_MAX_PAGES)",
+                self.max_pages,
+            )
+        self._check_schema(schema_error, resolved)
+
+    @staticmethod
+    def _check_schema(error: MissingFieldError | None, resolved: int) -> None:
+        """Fail the poll if no object's fields could be resolved."""
+        if error is not None and resolved == 0:
+            msg = f"ALeRCE response schema changed: {error}"
+            raise BrokerUnavailableError(msg)
 
     async def _call(self, method: Any, **kwargs: Any) -> Any:
         async with self._semaphore:
@@ -203,7 +233,8 @@ class AlerceBroker:
         """Convert one object, logging and skipping it on any error.
 
         Returns the candidate, the `MissingFieldError` that made the object
-        unusable, or `_Outcome.FILTERED` for any other skip.
+        unusable, `_Outcome.SKIPPED` if its detections could not be fetched,
+        or `_Outcome.FILTERED` for any other skip.
         """
         oid = obj.get("oid")
         try:
@@ -211,7 +242,10 @@ class AlerceBroker:
         except MissingFieldError as e:
             logger.warning("Skipping ALeRCE object %s: %s", oid, e)
             return e
-        except (BrokerUnavailableError, ValueError, TypeError) as e:
+        except BrokerUnavailableError as e:
+            logger.warning("Skipping ALeRCE object %s: %s", oid, e)
+            return _Outcome.SKIPPED
+        except (ValueError, TypeError) as e:
             logger.warning("Skipping ALeRCE object %s: %s", oid, e)
             return _Outcome.FILTERED
 
@@ -219,10 +253,16 @@ class AlerceBroker:
         self, obj: Mapping[str, Any], since: datetime, mag_limit: float
     ) -> Candidate | _Outcome:
         oid = resolve_field(obj, OBJECT_FIELDS, "oid")
-        dia_object_id = int(str(oid))
+        try:
+            dia_object_id = int(str(oid))
+        except ValueError:
+            logger.warning(
+                "Skipping ALeRCE object %s: oid is not numeric", oid
+            )
+            return _Outcome.SKIPPED
         lastmjd = resolve_field(obj, OBJECT_FIELDS, "lastmjd", required=False)
         if lastmjd is not None and mjd_to_datetime(float(lastmjd)) <= since:
-            return _Outcome.FILTERED
+            return _Outcome.SKIPPED
         detections: Sequence[Mapping[str, Any]] = await self._call(
             self._client.query_detections,
             survey=_SURVEY,
@@ -231,7 +271,7 @@ class AlerceBroker:
         )
         if not detections:
             logger.warning("Skipping ALeRCE object %s: no detections", oid)
-            return _Outcome.FILTERED
+            return _Outcome.SKIPPED
         latest = max(
             detections,
             key=lambda d: float(resolve_field(d, DETECTION_FIELDS, "mjd")),
@@ -247,8 +287,12 @@ class AlerceBroker:
         dec = resolve_field(
             latest, DETECTION_FIELDS, "dec", required=False
         ) or resolve_field(obj, OBJECT_FIELDS, "dec")
-        if not flux > 0:
-            logger.warning("Skipping ALeRCE object %s: bad flux %s", oid, flux)
+        if not math.isfinite(flux):
+            logger.warning("Skipping ALeRCE object %s: flux %s", oid, flux)
+            return _Outcome.FILTERED
+        if flux <= 0:
+            # Normal in difference imaging: the source is below its template.
+            logger.debug("Skipping ALeRCE object %s: flux %s", oid, flux)
             return _Outcome.FILTERED
         mag = flux_njy_to_ab_mag(flux)
         if mag > mag_limit or when <= since:

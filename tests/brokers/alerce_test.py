@@ -80,13 +80,13 @@ async def test_network_error_is_unavailable() -> None:
         [c async for c in _broker(stub).poll(SINCE, 30.0)]
 
 
-async def test_bad_flux_is_skipped_with_warning(
+async def test_negative_flux_is_skipped_quietly(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     with caplog.at_level(logging.WARNING):
         found = [c async for c in _broker(StubAlerce()).poll(SINCE, 30.0)]
     assert 1005 not in {c.dia_object_id for c in found}
-    assert any("1005" in r.getMessage() for r in caplog.records)
+    assert not any("1005" in r.getMessage() for r in caplog.records)
 
 
 def test_mjd_round_trip() -> None:
@@ -304,3 +304,118 @@ async def test_page_of_only_duplicates_is_not_a_schema_error() -> None:
     found = [c async for c in _broker(stub).poll(SINCE, 30.0)]
     page1 = {1001, 1002, 1003, 1004}
     assert {c.dia_object_id for c in found} == _expected(30.0) & page1
+
+
+class PagesAlerce(StubAlerce):
+    """Serves explicit pages of objects; detections from ``extra`` first."""
+
+    def __init__(
+        self,
+        pages: list[list[dict[str, Any]]],
+        extra: dict[str, list[dict[str, Any]]],
+        *,
+        failing: set[int] | None = None,
+        transform: Transform | None = None,
+    ) -> None:
+        super().__init__()
+        self.pages = pages
+        self.detections.update(extra)
+        self.failing = failing or set()
+        self.transform = transform
+
+    @override
+    def query_objects(self, **kwargs: Any) -> list[dict[str, Any]]:
+        self.calls.append(("query_objects", kwargs))
+        page = kwargs["page"]
+        return self.pages[page - 1] if page <= len(self.pages) else []
+
+    @override
+    def query_detections(self, **kwargs: Any) -> list[dict[str, Any]]:
+        if int(kwargs["oid"]) in self.failing:
+            raise requests.ConnectionError("timeout")
+        dets = super().query_detections(**kwargs)
+        return [self.transform(d) for d in dets] if self.transform else dets
+
+
+def _page(*oids: int) -> list[dict[str, Any]]:
+    objects = {
+        o["oid"]: o
+        for n in (1, 2)
+        for o in json.loads((DATA / f"objects_page{n}.json").read_text())[
+            "items"
+        ]
+    }
+    return [objects[oid] for oid in oids]
+
+
+def _det(oid: int, **values: Any) -> dict[str, Any]:
+    det = {
+        "oid": oid,
+        "measurement_id": oid * 100,
+        "mjd": 61353.5,
+        "band_name": "r",
+        "psfFlux": 1e6,
+        "ra": 10.0,
+        "dec": 10.0,
+    }
+    return {**det, **values}
+
+
+def _obj(oid: int, **values: Any) -> dict[str, Any]:
+    return {"oid": oid, "meanra": 10.0, "meandec": 10.0, **values}
+
+
+async def test_null_flux_on_lone_new_object_is_not_an_outage() -> None:
+    stub = PagesAlerce(
+        [_page(1001, 1002, 1003, 1004), [*_page(1001, 1002), _obj(2001)]],
+        {"2001": [_det(2001, psfFlux=None)]},
+    )
+    found = [c async for c in _broker(stub).poll(SINCE, 30.0)]
+    assert {c.dia_object_id for c in found} == _expected(30.0) & {
+        1001,
+        1002,
+        1003,
+        1004,
+    }
+
+
+async def test_unusable_values_are_skipped_without_outage(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    stub = PagesAlerce(
+        [
+            [
+                _obj(2001),
+                _obj(2002),
+                _obj(2003, meanra=None, meandec=None),
+            ]
+        ],
+        {
+            "2001": [_det(2001, psfFlux=float("nan"))],
+            "2002": [_det(2002, psfFlux=None)],
+            "2003": [_det(2003, ra=None, dec=None)],
+        },
+    )
+    with caplog.at_level(logging.WARNING):
+        found = [c async for c in _broker(stub).poll(SINCE, 30.0)]
+    assert found == []
+    assert any("2001" in r.getMessage() for r in caplog.records)
+
+
+async def test_rename_masked_by_failed_fetches_still_raises() -> None:
+    stub = PagesAlerce(
+        [_page(1001, 1002, 1003, 1004), _page(1005, 1006)],
+        {},
+        failing={1001, 1005},
+        transform=_rename("psfFlux", "psf_flux"),
+    )
+    with pytest.raises(BrokerUnavailableError) as e:
+        [c async for c in _broker(stub).poll(SINCE, 30.0)]
+    assert "psf_flux" in str(e.value)
+
+
+async def test_band_code_is_not_used_as_band_name() -> None:
+    stub = SchemaAlerce(_drop("band_name"), oids={"1003"})
+    found = [c async for c in _broker(stub).poll(SINCE, 30.0)]
+    assert 1003 not in {c.dia_object_id for c in found}
+    assert all(c.band.isalpha() for c in found)
