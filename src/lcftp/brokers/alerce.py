@@ -9,6 +9,7 @@ import asyncio
 import logging
 from collections.abc import AsyncIterator, Mapping, Sequence
 from datetime import UTC, datetime, timedelta
+from enum import Enum
 from importlib.metadata import version
 from typing import Any, Protocol
 
@@ -18,10 +19,14 @@ from ..photometry import flux_njy_to_ab_mag
 from .base import BrokerUnavailableError
 
 __all__ = [
+    "DETECTION_FIELDS",
+    "OBJECT_FIELDS",
     "AlerceBroker",
+    "MissingFieldError",
     "create_broker",
     "datetime_to_mjd",
     "mjd_to_datetime",
+    "resolve_field",
 ]
 
 _MJD_EPOCH = datetime(1858, 11, 17, tzinfo=UTC)
@@ -50,11 +55,53 @@ class AlerceClient(Protocol):
         """Query an object's detections."""
 
 
-def _field(record: Mapping[str, Any], *names: str) -> Any:
-    for name in names:
+OBJECT_FIELDS: Mapping[str, tuple[str, ...]] = {
+    "oid": ("oid",),
+    "ra": ("meanra",),
+    "dec": ("meandec",),
+    "lastmjd": ("lastmjd",),
+}
+"""ALeRCE object-list field names for each logical field, in priority order."""
+
+DETECTION_FIELDS: Mapping[str, tuple[str, ...]] = {
+    "mjd": ("mjd", "midpointMjdTai"),
+    "flux": ("psfFlux",),
+    "ra": ("ra",),
+    "dec": ("dec",),
+    "alert_id": ("measurement_id", "diaSourceId", "candid"),
+    "band": ("band_name", "band"),
+}
+"""ALeRCE detection field names for each logical field, in priority order."""
+
+
+class MissingFieldError(ValueError):
+    """An ALeRCE record has none of the names for a logical field."""
+
+    def __init__(self, field: str, keys: list[str]) -> None:
+        self.field = field
+        self.keys = keys
+        super().__init__(f"no {field!r} field; record keys: {keys}")
+
+
+def resolve_field(
+    record: Mapping[str, Any],
+    fields: Mapping[str, tuple[str, ...]],
+    logical: str,
+    *,
+    required: bool = True,
+) -> Any:
+    """Return the first non-null value among a logical field's names."""
+    for name in fields[logical]:
         if record.get(name) is not None:
             return record[name]
+    if required:
+        raise MissingFieldError(logical, sorted(record))
     return None
+
+
+class _Outcome(Enum):
+    FILTERED = "filtered"
+    SCHEMA = "schema"
 
 
 class AlerceBroker:
@@ -113,12 +160,18 @@ class AlerceBroker:
             )
             if not objects:
                 return
-            candidates = await asyncio.gather(
+            results = await asyncio.gather(
                 *(self._safe_candidate(o, since, mag_limit) for o in objects)
             )
-            for candidate in candidates:
-                if candidate is not None:
-                    yield candidate
+            schema_errors = [
+                r for r in results if isinstance(r, MissingFieldError)
+            ]
+            if len(schema_errors) == len(results):
+                msg = f"ALeRCE response schema changed: {schema_errors[0]}"
+                raise BrokerUnavailableError(msg)
+            for result in results:
+                if isinstance(result, Candidate):
+                    yield result
             if self._page_delay_s:
                 await asyncio.sleep(self._page_delay_s)
         logger.warning(
@@ -137,56 +190,70 @@ class AlerceBroker:
 
     async def _safe_candidate(
         self, obj: Mapping[str, Any], since: datetime, mag_limit: float
-    ) -> Candidate | None:
-        """Convert one object, logging and skipping it on any error."""
+    ) -> Candidate | MissingFieldError | _Outcome:
+        """Convert one object, logging and skipping it on any error.
+
+        Returns the candidate, the `MissingFieldError` that made the object
+        unusable, or `_Outcome.FILTERED` for any other skip.
+        """
+        oid = obj.get("oid")
         try:
             return await self._candidate(obj, since, mag_limit)
+        except MissingFieldError as e:
+            logger.warning("Skipping ALeRCE object %s: %s", oid, e)
+            return e
         except (BrokerUnavailableError, ValueError, TypeError) as e:
-            logger.warning(
-                "Skipping ALeRCE object %s: %s", _field(obj, "oid"), e
-            )
-            return None
+            logger.warning("Skipping ALeRCE object %s: %s", oid, e)
+            return _Outcome.FILTERED
 
     async def _candidate(
         self, obj: Mapping[str, Any], since: datetime, mag_limit: float
-    ) -> Candidate | None:
-        oid = _field(obj, "oid")
+    ) -> Candidate | _Outcome:
+        oid = resolve_field(obj, OBJECT_FIELDS, "oid")
+        dia_object_id = int(str(oid))
         detections: Sequence[Mapping[str, Any]] = await self._call(
             self._client.query_detections,
             survey=_SURVEY,
             oid=oid,
             format="json",
         )
-        timed = [d for d in detections if _field(d, "mjd", "midpointMjdTai")]
-        if not timed:
+        if not detections:
             logger.warning("Skipping ALeRCE object %s: no detections", oid)
-            return None
+            return _Outcome.FILTERED
         latest = max(
-            timed, key=lambda d: float(_field(d, "mjd", "midpointMjdTai"))
+            detections,
+            key=lambda d: float(resolve_field(d, DETECTION_FIELDS, "mjd")),
         )
-        when = mjd_to_datetime(float(_field(latest, "mjd", "midpointMjdTai")))
-        flux = _field(latest, "psfFlux")
-        ra = _field(latest, "ra") or _field(obj, "meanra")
-        dec = _field(latest, "dec") or _field(obj, "meandec")
-        if flux is None or float(flux) <= 0 or ra is None or dec is None:
-            logger.warning(
-                "Skipping ALeRCE object %s: bad flux or position", oid
-            )
-            return None
-        mag = flux_njy_to_ab_mag(float(flux))
+        when = mjd_to_datetime(
+            float(resolve_field(latest, DETECTION_FIELDS, "mjd"))
+        )
+        flux = float(resolve_field(latest, DETECTION_FIELDS, "flux"))
+        band = str(resolve_field(latest, DETECTION_FIELDS, "band"))
+        ra = resolve_field(
+            latest, DETECTION_FIELDS, "ra", required=False
+        ) or resolve_field(obj, OBJECT_FIELDS, "ra")
+        dec = resolve_field(
+            latest, DETECTION_FIELDS, "dec", required=False
+        ) or resolve_field(obj, OBJECT_FIELDS, "dec")
+        if not flux > 0:
+            logger.warning("Skipping ALeRCE object %s: bad flux %s", oid, flux)
+            return _Outcome.FILTERED
+        mag = flux_njy_to_ab_mag(flux)
         if mag > mag_limit or when <= since:
-            return None
-        alert_id = _field(latest, "measurement_id", "diaSourceId", "candid")
+            return _Outcome.FILTERED
+        alert_id = resolve_field(
+            latest, DETECTION_FIELDS, "alert_id", required=False
+        )
         now = datetime.now(tz=UTC)
         return Candidate(
-            dia_object_id=int(oid),
+            dia_object_id=dia_object_id,
             sources=[BrokerRef(broker=self.name, broker_object_id=str(oid))],
             latest_alert_id=str(alert_id) if alert_id is not None else None,
             latest_alert_time=when,
             ra=float(ra) % 360,
             dec=float(dec),
             mag=mag,
-            band=str(_field(latest, "band_name", "band")),
+            band=band,
             first_seen=now,
             last_updated=now,
         )

@@ -1,5 +1,6 @@
 import json
 import logging
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from importlib.metadata import entry_points
 from pathlib import Path
@@ -8,7 +9,14 @@ from typing import Any, override
 import pytest
 import requests
 
-from lcftp.brokers.alerce import AlerceBroker, create_broker, mjd_to_datetime
+from lcftp.brokers.alerce import (
+    DETECTION_FIELDS,
+    AlerceBroker,
+    MissingFieldError,
+    create_broker,
+    mjd_to_datetime,
+    resolve_field,
+)
 from lcftp.brokers.base import BrokerUnavailableError
 from lcftp.brokers.testing import assert_broker_contract
 from lcftp.photometry import flux_njy_to_ab_mag
@@ -162,3 +170,125 @@ async def test_page_limit_is_logged(caplog: pytest.LogCaptureFixture) -> None:
     with caplog.at_level(logging.WARNING):
         [c async for c in broker.poll(SINCE, 30.0)]
     assert any("max_pages" in r.getMessage() for r in caplog.records)
+
+
+def test_resolve_field_reports_logical_name_and_keys() -> None:
+    with pytest.raises(MissingFieldError) as e:
+        resolve_field({"psf_flux": 1.0, "mjd": 1.0}, DETECTION_FIELDS, "flux")
+    assert e.value.field == "flux"
+    assert e.value.keys == ["mjd", "psf_flux"]
+    assert "flux" in str(e.value)
+    assert "psf_flux" in str(e.value)
+
+
+def test_resolve_field_optional_returns_none() -> None:
+    assert (
+        resolve_field({}, DETECTION_FIELDS, "alert_id", required=False) is None
+    )
+
+
+def test_resolve_field_uses_fallback_names() -> None:
+    assert (
+        resolve_field({"midpointMjdTai": 5.0}, DETECTION_FIELDS, "mjd") == 5.0
+    )
+
+
+Transform = Callable[[dict[str, Any]], dict[str, Any]]
+
+
+def _rename(old: str, new: str) -> Transform:
+    def transform(det: dict[str, Any]) -> dict[str, Any]:
+        det = dict(det)
+        det[new] = det.pop(old)
+        return det
+
+    return transform
+
+
+def _drop(*names: str) -> Transform:
+    def transform(det: dict[str, Any]) -> dict[str, Any]:
+        return {k: v for k, v in det.items() if k not in names}
+
+    return transform
+
+
+class SchemaAlerce(StubAlerce):
+    """Rewrites detections (for some oids) and optionally adds objects."""
+
+    def __init__(
+        self,
+        transform: Transform,
+        *,
+        oids: set[str] | None = None,
+        extra_objects: list[dict[str, Any]] | None = None,
+        oid_as_string: bool = False,
+    ) -> None:
+        super().__init__()
+        self.transform = transform
+        self.oids = oids
+        self.extra_objects = extra_objects or []
+        self.oid_as_string = oid_as_string
+
+    @override
+    def query_objects(self, **kwargs: Any) -> list[dict[str, Any]]:
+        objects = super().query_objects(**kwargs)
+        if self.oid_as_string:
+            objects = [{**o, "oid": str(o["oid"])} for o in objects]
+        if kwargs["page"] == 1:
+            objects = [*self.extra_objects, *objects]
+        return objects
+
+    @override
+    def query_detections(self, **kwargs: Any) -> list[dict[str, Any]]:
+        dets = super().query_detections(**kwargs)
+        if self.oids is None or str(kwargs["oid"]) in self.oids:
+            dets = [self.transform(d) for d in dets]
+        return dets
+
+
+async def test_missing_band_is_skipped_not_stored_as_none(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    stub = SchemaAlerce(_drop("band", "band_name"), oids={"1003"})
+    with caplog.at_level(logging.WARNING):
+        found = [c async for c in _broker(stub).poll(SINCE, 30.0)]
+    assert 1003 not in {c.dia_object_id for c in found}
+    assert all(c.band != "None" for c in found)
+    assert any(
+        "1003" in r.getMessage() and "band" in r.getMessage()
+        for r in caplog.records
+    )
+
+
+async def test_string_oid_is_converted() -> None:
+    stub = SchemaAlerce(lambda d: d, oid_as_string=True)
+    found = [c async for c in _broker(stub).poll(SINCE, 30.0)]
+    assert {c.dia_object_id for c in found} == _expected(30.0)
+
+
+async def test_non_numeric_oid_is_skipped(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    stub = SchemaAlerce(
+        lambda d: d,
+        extra_objects=[{"oid": "ZTF26abc", "meanra": 1.0, "meandec": 1.0}],
+    )
+    stub.detections["ZTF26abc"] = stub.detections["1003"]
+    with caplog.at_level(logging.WARNING):
+        found = [c async for c in _broker(stub).poll(SINCE, 30.0)]
+    assert {c.dia_object_id for c in found} == _expected(30.0)
+    assert any("ZTF26abc" in r.getMessage() for r in caplog.records)
+
+
+async def test_renamed_field_on_every_object_raises_unavailable() -> None:
+    stub = SchemaAlerce(_rename("psfFlux", "psf_flux"))
+    with pytest.raises(BrokerUnavailableError) as e:
+        [c async for c in _broker(stub).poll(SINCE, 30.0)]
+    assert "flux" in str(e.value)
+    assert "psf_flux" in str(e.value)
+
+
+async def test_one_bad_object_does_not_raise() -> None:
+    stub = SchemaAlerce(_rename("psfFlux", "psf_flux"), oids={"1003"})
+    found = [c async for c in _broker(stub).poll(SINCE, 30.0)]
+    assert {c.dia_object_id for c in found} == _expected(30.0) - {1003}
