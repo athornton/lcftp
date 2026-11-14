@@ -43,6 +43,7 @@ async def _poll_one(
     broker: BrokerSource,
     sessions: async_sessionmaker[AsyncSession],
     settings: Settings,
+    *,
     mag_limit: float,
     now: datetime,
     report: IngestReport,
@@ -114,7 +115,14 @@ async def run_ingest_once(
     else:
         mag_limit = faintest + settings.ingest_mag_margin
         for broker in brokers:
-            await _poll_one(broker, sessions, settings, mag_limit, now, report)
+            await _poll_one(
+                broker,
+                sessions,
+                settings,
+                mag_limit=mag_limit,
+                now=now,
+                report=report,
+            )
     async with sessions() as session, session.begin():
         store = SqlCandidateStore(session)
         report.expired = await store.expire(now - settings.candidate_max_age)
