@@ -159,6 +159,11 @@ python_files = ["tests/*.py", "tests/*/*.py", "*/tests/*.py", "*/tests/*/*.py"]
 [tool.ruff]
 extend = "ruff-shared.toml"
 
+[tool.ruff.lint]
+extend-ignore = [
+    "CPY001",  # the repository LICENSE covers every file; no per-file notices
+]
+
 [tool.ruff.lint.extend-per-file-ignores]
 "src/lcftp/api/**" = [
     "FAST003", # path parameters are consumed by dependencies such as OwnedDep
