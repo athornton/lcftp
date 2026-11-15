@@ -1,0 +1,42 @@
+[project]
+name = "lcftp-driver-seestar"
+description = "LCFTP telescope driver for ZWO Seestar smart telescopes"
+readme = "README.md"
+license = "GPL-3.0-or-later"
+license-files = ["LICENSE"]
+requires-python = ">=3.13"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Natural Language :: English",
+    "Operating System :: POSIX",
+    "Typing :: Typed",
+]
+dependencies = [
+    "astropy>=7.0",
+    "lcftp-client",
+    "lcftp-models",
+    "pydantic>=2.10",
+    "seestarpy>=0.8,<0.9",
+]
+dynamic = ["version"]
+
+[project.entry-points."lcftp.drivers"]
+seestar = "lcftp_driver_seestar.driver:create_driver"
+
+[[project.authors]]
+name = "Adam Thornton"
+email = "athornton@gmail.com"
+
+[project.urls]
+Source = "https://github.com/athornton/lcftp"
+
+[build-system]
+requires = ["setuptools>=77", "setuptools_scm[toml]>=8"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools_scm]
+root = "../.."
+
+[tool.ruff]
+extend = "../../pyproject.toml"
+target-version = "py313"

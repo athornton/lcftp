@@ -19,6 +19,7 @@ members = [
     "lcftp",
     "lcftp-auth",
     "lcftp-client",
+    "lcftp-driver-seestar",
     "lcftp-models",
 ]
 
@@ -1610,6 +1611,7 @@ dev = [
     { name = "coverage" },
     { name = "ipykernel" },
     { name = "lcftp-client" },
+    { name = "lcftp-driver-seestar" },
     { name = "matplotlib" },
     { name = "moto", extra = ["server"] },
     { name = "nbmake" },
@@ -1659,6 +1661,7 @@ dev = [
     { name = "coverage", extras = ["toml"] },
     { name = "ipykernel" },
     { name = "lcftp-client", editable = "client" },
+    { name = "lcftp-driver-seestar", editable = "drivers/seestar" },
     { name = "matplotlib" },
     { name = "moto", extras = ["server"], specifier = ">=5.1" },
     { name = "nbmake" },
@@ -1721,6 +1724,26 @@ requires-dist = [
     { name = "lcftp-models", editable = "models" },
     { name = "numpy", specifier = ">=2.0" },
     { name = "tomli-w", specifier = ">=1.0" },
+]
+
+[[package]]
+name = "lcftp-driver-seestar"
+source = { editable = "drivers/seestar" }
+dependencies = [
+    { name = "astropy" },
+    { name = "lcftp-client" },
+    { name = "lcftp-models" },
+    { name = "pydantic" },
+    { name = "seestarpy" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "astropy", specifier = ">=7.0" },
+    { name = "lcftp-client", editable = "client" },
+    { name = "lcftp-models", editable = "models" },
+    { name = "pydantic", specifier = ">=2.10" },
+    { name = "seestarpy", specifier = ">=0.8,<0.9" },
 ]
 
 [[package]]
@@ -2709,6 +2732,19 @@ wheels = [
 ]
 
 [[package]]
+name = "pysmb"
+version = "1.2.15"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pyasn1" },
+    { name = "tqdm" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/9d/84/f5158ec04fdd813aa4f8df229a5f6319f20c6a555adb3967a33d69e24347/pysmb-1.2.15.tar.gz", hash = "sha256:1c12eb0e251152e80b4bde5d816b33cab14d04b261b5f790cb4a5d9fd9653881", size = 1182126, upload-time = "2026-08-08T10:33:42.683Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/12/4a/5683a2244e7d8235612217936b33cd1ccded87371606afe4436b09cdc0b3/pysmb-1.2.15-py3-none-any.whl", hash = "sha256:f8459400dfcc9f1ec691936fc57d794803c4240516c27cb196024333f4947d7a", size = 85631, upload-time = "2026-08-08T10:33:40.522Z" },
+]
+
+[[package]]
 name = "pytest"
 version = "9.2.0"
 source = { registry = "https://pypi.org/simple" }
@@ -3114,6 +3150,21 @@ wheels = [
 ]
 
 [[package]]
+name = "seestarpy"
+version = "0.8.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "cryptography" },
+    { name = "pysmb" },
+    { name = "requests" },
+    { name = "tzlocal" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/51/ac/29b9d22e0dbf417f9ae0bc841dce5e42e6dbd97ac7063c75fab5c95c73b9/seestarpy-0.8.0.tar.gz", hash = "sha256:7857a1b95d6b9fea775c8fb59018f0f1523e698004652bdc42a566add672a968", size = 827249, upload-time = "2026-11-04T20:58:57.255Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/20/4b/bb61b2034b1daa3808597d0b18e15785e8c1065bd57d87f7d6ea002a5316/seestarpy-0.8.0-py3-none-any.whl", hash = "sha256:027e2c96eb166b5d595bfe2d9647e571a317475b982c8d7b6423be7e6493f75f", size = 159831, upload-time = "2026-11-04T20:58:54.942Z" },
+]
+
+[[package]]
 name = "six"
 version = "1.17.0"
 source = { registry = "https://pypi.org/simple" }
@@ -3293,6 +3344,18 @@ wheels = [
 ]
 
 [[package]]
+name = "tqdm"
+version = "4.70.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "colorama", marker = "sys_platform == 'win32'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/0d/ea/b2a5bd54b28a324dae8211928b2d730b6547500342c7e6c6dea08bd0a485/tqdm-4.70.1.tar.gz", hash = "sha256:cefd0eca11b2a37a3aee776544d4f4ae913f02688135b5556b8788dfa474afc4", size = 171846, upload-time = "2026-09-11T07:25:16.601Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/a7/03/921a3d3c75785aca9ebfbfcabfbc3a1be12e2ab5265deb026d55a5a3f83e/tqdm-4.70.1-py3-none-any.whl", hash = "sha256:c293e525e6fef9c20e8728fd4612df02a0aa31bb5fe91ecd93e123b1b7bffa73", size = 80199, upload-time = "2026-09-11T07:25:14.599Z" },
+]
+
+[[package]]
 name = "traitlets"
 version = "5.16.1"
 source = { registry = "https://pypi.org/simple" }
@@ -3350,6 +3413,18 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/7a/29/6a1391d31cd00ff9e927215a224a880e1e84e826b64ba80a499e51c074d8/tzdata-2026.6.tar.gz", hash = "sha256:85d2cd9c09f81f0bb29db27759fc83af4f1e620efb814f8c5bf8b4cc4feece6d", size = 201017, upload-time = "2026-10-28T09:57:09.137Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/0a/66/9a06c2227fedfd4919f0eaaa8b94377d9730882a7e4f95823c9a331ab5e1/tzdata-2026.6-py2.py3-none-any.whl", hash = "sha256:0a10eec6e13ef16b627fabed9a5f2ba61a62b1c67f327305f4e7e412a70b4aec", size = 348210, upload-time = "2026-10-28T09:57:07.276Z" },
+]
+
+[[package]]
+name = "tzlocal"
+version = "5.4.5"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "tzdata", marker = "sys_platform == 'win32'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/d8/89/2bd035df331499589fc92e59375c17c6cea6a500453b2c5f6a6ec9572825/tzlocal-5.4.5.tar.gz", hash = "sha256:ba976898bad27945178c9ca25c222c19e322b30c10342b9f40b46714f70d2d5f", size = 31483, upload-time = "2026-10-22T09:09:26.38Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/7b/c1/9be4e1a8a30db8729a86628073910e56f85aaf8a659e053f376a2e6ea5a8/tzlocal-5.4.5-py3-none-any.whl", hash = "sha256:ecab534f6d65d9deb4c4ea52c121ab6dd5958e9b878e71dcb102578269752454", size = 18215, upload-time = "2026-10-22T09:09:24.447Z" },
 ]
 
 [[package]]
