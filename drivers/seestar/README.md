@@ -21,6 +21,16 @@ supply one, set `key_path` in the driver configuration (or the
 `SEESTAR_KEY_PATH` environment variable). Without a key, connecting to
 newer firmware fails with an error that says so.
 
+The key is embedded in `libopenssllib.so` inside the Seestar Android app.
+As of Seestar app v3.4.1 (packaged as an `.xapk`) that library, and so
+the key, is in the `config.arm64_v8a.apk` ABI split rather than the base
+apk, so point `seestarpy`'s extractor at that split:
+
+    python -m seestarpy.extract_pem config.arm64_v8a.apk
+
+(`seestarpy` 0.8's extractor expects the key in the base apk; a fix for
+the 3.4+ split layout is in progress upstream.)
+
 ## Configuration
 
 The driver configuration (the `driver_config` table in the client
