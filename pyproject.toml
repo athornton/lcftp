@@ -56,6 +56,7 @@ dev = [
     "pytest-asyncio",
     "ipykernel",
     "lcftp-client",
+    "lcftp-driver-seestar",
     "matplotlib",
     "moto[server]>=5.1",
     "nbmake",
@@ -105,7 +106,14 @@ exclude_lines = [
 
 [tool.mypy]
 explicit_package_bases = true
-mypy_path = ["src", "models/src", "auth/src", "client/src", "."]
+mypy_path = [
+    "src",
+    "models/src",
+    "auth/src",
+    "client/src",
+    "drivers/seestar/src",
+    ".",
+]
 disallow_incomplete_defs = true
 disallow_untyped_defs = true
 enable_error_code = [
@@ -127,6 +135,11 @@ strict_equality = true
 warn_redundant_casts = true
 warn_unreachable = true
 warn_unused_ignores = true
+
+[[tool.mypy.overrides]]
+# seestarpy ships no type information; only SeestarPyControl touches it.
+module = ["seestarpy", "seestarpy.*"]
+ignore_missing_imports = true
 
 [tool.pydantic-mypy]
 init_forbid_extra = true
@@ -206,6 +219,7 @@ known-first-party = [
     "lcftp",
     "lcftp_auth",
     "lcftp_client",
+    "lcftp_driver_seestar",
     "lcftp_models",
 ]
 
@@ -225,12 +239,13 @@ skip_fragments = "_template.md.jinja"
 [tool.setuptools_scm]
 
 [tool.uv.workspace]
-members = ["models", "auth", "client"]
+members = ["models", "auth", "client", "drivers/seestar"]
 
 [tool.uv.sources]
 lcftp-models = { workspace = true }
 lcftp-auth = { workspace = true }
 lcftp-client = { workspace = true }
+lcftp-driver-seestar = { workspace = true }
 
 [tool.uv]
 required-environments = [

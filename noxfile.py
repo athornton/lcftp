@@ -15,10 +15,16 @@ nox.options.default_venv_backend = "uv"
 nox.options.reuse_existing_virtualenvs = True
 
 # Test directories for packages that require Python 3.14.
-_TEST_DIRS = ["tests", "models/tests", "auth/tests", "client/tests"]
+_TEST_DIRS = [
+    "tests",
+    "models/tests",
+    "auth/tests",
+    "client/tests",
+    "drivers/seestar/tests",
+]
 
 # Packages that must also work on Python 3.13 (the RSP notebook kernel).
-_PY313_PACKAGES = ["models", "client"]
+_PY313_PACKAGES = ["models", "client", "drivers/seestar"]
 
 # Test-only dependencies for the Python 3.13 session, which cannot use the
 # workspace lock because the server requires Python 3.14.
@@ -78,7 +84,14 @@ def lint(session: nox.Session) -> None:
 @session(uv_groups=["dev", "nox", "typing"])
 def typing(session: nox.Session) -> None:
     """Check type annotations with mypy."""
-    sources = ["noxfile.py", "src", "models/src", "auth/src", "client/src"]
+    sources = [
+        "noxfile.py",
+        "src",
+        "models/src",
+        "auth/src",
+        "client/src",
+        "drivers/seestar/src",
+    ]
     session.run("mypy", *session.posargs, *sources, "tests")
     # Test directories are checked separately because pytest's importlib
     # mode allows test modules with the same name in different packages.
