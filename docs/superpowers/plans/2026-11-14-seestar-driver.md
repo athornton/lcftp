@@ -320,8 +320,13 @@ Errors are wrapped as `SeestarControlError(Exception)`. `StackInfo` and
 
 - [ ] Pick a bright, high, easy target. Pass its ICRS RA in **hours** and
   Dec in degrees.
-- [ ] Run the recorder with `--subs 3 --exposure 10`, plus `--key` if
-  Task 0 showed the firmware needs one.
+- [ ] Run the recorder with `--subs 3 --exposure 10 --lat <deg N> --lon
+  <deg E, west negative>`, plus `--key` (firmware 9.75 needs one). The
+  recorder drives the real `SeestarDriver` through the
+  `assert_driver_contract` sequence, so the recording replays through
+  the driver call-for-call. (Revised after the final review of Tasks
+  1–5: the first version recorded its own call order, which the driver
+  could not replay.)
 - [ ] Check `drivers/seestar/tests/data/recorded/` holds
   `session.jsonl`, one `.header.json` per sub-frame, no FITS pixel data,
   and no unscrubbed serial number, IP or SSID:
@@ -420,6 +425,14 @@ and the README only as the recording requires.
     `"S30 Plus"`.
   - `test_recorded_device_identity` checks that `product_model` and
     `firmware` match what Task 0 reported (pinned literals).
+  - **Coordinate epoch.** The driver sends ICRS (J2000) coordinates to
+    `goto_target` and compares them with `scope_get_equ_coord`. If the
+    firmware works in JNow, the 2026 offset is about 0.36°: under the
+    pointing gate, but it shifts `dist_deg` and the frame RA/Dec. From
+    the recorded goto, compare the requested position, the reported
+    position and the plate-solved FITS `CRVAL*`. If the firmware uses
+    JNow, convert with astropy `FK5(equinox=now)` in `SeestarPyControl`
+    (both ways), with a test.
 - [ ] **Step 2:** run; record each failure.
 - [ ] **Step 3: Correct the narrowing in `SeestarPyControl`** (field
   names, units) to match the recording. Record each correction as a

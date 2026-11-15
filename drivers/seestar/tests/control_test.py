@@ -44,7 +44,8 @@ def _fake(**overrides: Any) -> SimpleNamespace:
     )
     ns.raw = SimpleNamespace(
         get_device_state=rec(
-            "get_device_state", {"result": {"device": DEVICE}}
+            "get_device_state",
+            {"result": {"device": DEVICE, "location_lon_lat": [-111.0, 40.0]}},
         ),
         scope_get_equ_coord=rec(
             "scope_get_equ_coord", {"result": {"ra": 5.5, "dec": -5.4}}
@@ -73,6 +74,7 @@ def _fake(**overrides: Any) -> SimpleNamespace:
         exposure=rec("exposure", 10),
         start_stack=rec("start_stack", {"result": 0}),
         close=rec("close", {"result": 0}),
+        goto=rec("goto", {"state": "complete", "error": None}),
     )
     ns.data = SimpleNamespace(
         list_folder_contents=rec(
@@ -100,7 +102,10 @@ def test_connect_reads_device_and_sets_host() -> None:
     ns = _fake()
     info = _control(ns).connect("192.168.1.50", None)
     assert info == DeviceInfo(
-        product_model="Seestar S30 Plus", firmware="9.75", focal_len_mm=160.0
+        product_model="Seestar S30 Plus",
+        firmware="9.75",
+        focal_len_mm=160.0,
+        site_lon_lat=(-111.0, 40.0),
     )
     assert ns.connection.DEFAULT_IP == "192.168.1.50"
 
@@ -220,11 +225,53 @@ def test_errors_are_wrapped() -> None:
         _control(ns).start_stack()
 
 
-def test_park_and_disconnect() -> None:
+def test_park_waits_for_home_and_disconnect() -> None:
     ns = _fake()
     control = _control(ns)
     control.open_arm()
     control.set_exposure(10)
     control.park()
     control.disconnect()
-    assert _names(ns) == ["open", "exposure", "close", "close_connections"]
+    assert _names(ns) == ["open", "exposure", "goto", "close_connections"]
+    (park,) = [c for c in ns.calls if c[0] == "goto"]
+    assert park[1] == ("park",)
+    assert park[2]["verbose"] is False
+
+
+def test_failed_park_raises() -> None:
+    ns = _fake(goto={"state": "fail", "error": "busy"})
+    with pytest.raises(SeestarControlError, match="busy"):
+        _control(ns).park()
+
+
+@pytest.mark.parametrize(
+    "method", ["set_save_subframes", "stop_stack", "start_stack", "open_arm"]
+)
+def test_rejected_rpc_raises(method: str) -> None:
+    rejected = {"jsonrpc": "2.0", "code": 207, "error": "fail to operate"}
+    ns = _fake(
+        set_setting=rejected,
+        iscope_stop_view=rejected,
+        start_stack=rejected,
+        open=rejected,
+    )
+    control = _control(ns)
+    calls = {
+        "set_save_subframes": lambda: control.set_save_subframes(enabled=True),
+        "stop_stack": control.stop_stack,
+        "start_stack": control.start_stack,
+        "open_arm": control.open_arm,
+    }
+    with pytest.raises(SeestarControlError, match="fail to operate"):
+        calls[method]()
+
+
+def test_event_reply_without_code_is_success() -> None:
+    event = {"Event": "Setting", "exp_ms": {"stack_l": 10000}}
+    _control(_fake(exposure=event)).set_exposure(10)
+
+
+def test_abort_stops_whole_view() -> None:
+    ns = _fake()
+    _control(ns).abort()
+    assert ns.calls[-1] == ("iscope_stop_view", (), {})

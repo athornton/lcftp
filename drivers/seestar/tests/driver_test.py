@@ -1,5 +1,6 @@
 import asyncio
 import contextlib
+import threading
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from importlib.metadata import entry_points
@@ -85,7 +86,15 @@ class DriverFake:
         connect_error: Exception | None = None,
         frame_wcs: bool = True,
         on_poll: Callable[[], object] | None = None,
+        device: DeviceInfo = DEVICE,
+        start_error: Exception | None = None,
+        goto_gate: threading.Event | None = None,
+        on_goto: Callable[[], object] | None = None,
     ) -> None:
+        self.device = device
+        self.start_error = start_error
+        self.goto_gate = goto_gate
+        self.on_goto = on_goto
         self.calls: list[str] = []
         self.on_poll = on_poll
         self.stack = stack or [
@@ -108,7 +117,7 @@ class DriverFake:
         self.calls.append("connect")
         if self.connect_error:
             raise self.connect_error
-        return DEVICE
+        return self.device
 
     def open_arm(self) -> None:
         self.calls.append("open_arm")
@@ -122,6 +131,11 @@ class DriverFake:
     ) -> GotoResult:
         self.calls.append("goto")
         self.target = target_name
+        if self.on_goto:
+            self.on_goto()
+        if self.goto_gate:
+            self.goto_gate.wait(5)
+            self.calls.append("goto-done")
         return self.goto_result
 
     def set_exposure(self, seconds: int) -> None:
@@ -132,6 +146,8 @@ class DriverFake:
 
     def start_stack(self) -> None:
         self.calls.append("start_stack")
+        if self.start_error:
+            raise self.start_error
 
     def stack_info(self) -> StackInfo:
         self.calls.append("stack_info")
@@ -157,6 +173,9 @@ class DriverFake:
         self.calls.append("download")
         write_frame(dest, wcs=self.frame_wcs)
         return dest
+
+    def abort(self) -> None:
+        self.calls.append("abort")
 
     def park(self) -> None:
         self.calls.append("park")
@@ -230,6 +249,7 @@ async def test_failed_goto_raises_without_stacking(tmp_path: Path) -> None:
     with pytest.raises(DriverError, match="timeout"):
         await driver.observe(_item(), _ctx(tmp_path))
     assert "start_stack" not in fake.calls
+    assert fake.calls[-1] == "abort"
 
 
 async def test_large_pointing_error_raises(tmp_path: Path) -> None:
@@ -376,13 +396,7 @@ async def test_park_is_idempotent_and_safe_before_connect() -> None:
     await driver.connect()
     await driver.park()
     await driver.park()
-    assert fake.calls == [
-        "connect",
-        "stop_stack",
-        "park",
-        "stop_stack",
-        "park",
-    ]
+    assert fake.calls == ["connect", "abort", "park", "abort", "park"]
 
 
 def test_create_driver_from_config_mapping() -> None:
@@ -399,3 +413,47 @@ def test_entry_point_loads_factory() -> None:
         if ep.name == "seestar"
     ]
     assert ep.load() is create_driver
+
+
+async def test_start_stack_failure_still_stops(tmp_path: Path) -> None:
+    fake = DriverFake(start_error=SeestarControlError("reply lost"))
+    driver = _driver(fake)
+    await driver.connect()
+    with pytest.raises(DriverError, match="reply lost"):
+        await driver.observe(_item(), _ctx(tmp_path))
+    assert fake.calls[-1] == "stop_stack"
+
+
+async def test_cancel_during_goto_waits_for_the_slew(tmp_path: Path) -> None:
+    loop = asyncio.get_running_loop()
+    entered = asyncio.Event()
+    gate = threading.Event()
+    fake = DriverFake(
+        goto_gate=gate,
+        on_goto=lambda: loop.call_soon_threadsafe(entered.set),
+    )
+    driver = _driver(fake)
+    await driver.connect()
+    task = asyncio.create_task(driver.observe(_item(), _ctx(tmp_path)))
+    await asyncio.wait_for(entered.wait(), timeout=5)
+    task.cancel()
+    park = asyncio.create_task(driver.park())
+    await asyncio.sleep(0.05)
+    assert "park" not in fake.calls  # still waiting for the slew thread
+    gate.set()
+    with contextlib.suppress(asyncio.CancelledError):
+        await task
+    await asyncio.wait_for(park, timeout=5)
+    assert fake.calls[-4:] == ["goto", "goto-done", "abort", "park"]
+
+
+async def test_site_mismatch_fails_connect() -> None:
+    utah_as_west_positive = CONFIG.model_copy(update={"site_lon_deg": 111.0})
+    driver = _driver(DriverFake(), utah_as_west_positive)
+    with pytest.raises(DriverError, match="east"):
+        await driver.connect()
+
+
+async def test_device_without_site_connects() -> None:
+    device = DEVICE.model_copy(update={"site_lon_lat": None})
+    await _driver(DriverFake(device=device)).connect()

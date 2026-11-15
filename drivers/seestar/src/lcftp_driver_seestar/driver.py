@@ -33,6 +33,7 @@ from .control import (
     SeestarControlError,
     SeestarPyControl,
     StackInfo,
+    angular_distance_deg,
 )
 from .safety import sun_altitude_deg
 
@@ -40,6 +41,7 @@ __all__ = ["SeestarDriver", "create_driver", "exposure_plan"]
 
 logger = logging.getLogger(__name__)
 
+_SITE_TOLERANCE_DEG = 1.0
 _ARCSEC_PER_RADIAN_MM_PER_UM = 206.265
 """Plate scale (arcsec/px) = this * pixel size (µm) / focal length (mm)."""
 
@@ -123,9 +125,22 @@ class SeestarDriver:
     async def _run(
         self, call: Callable[..., Any], *args: Any, **kw: Any
     ) -> Any:
+        """Run a blocking control call in a thread, one at a time.
+
+        If the caller is cancelled, the lock is held until the thread has
+        actually finished, so the next command (often ``park``) cannot
+        reach the telescope while a slew is still in progress.
+        """
         async with self._lock:
+            future = asyncio.ensure_future(
+                asyncio.to_thread(call, *args, **kw)
+            )
             try:
-                return await asyncio.to_thread(call, *args, **kw)
+                return await asyncio.shield(future)
+            except asyncio.CancelledError:
+                with contextlib.suppress(Exception):
+                    await future
+                raise
             except SeestarControlError as e:
                 raise DriverError(str(e)) from e
 
@@ -135,6 +150,7 @@ class SeestarDriver:
             self._control.connect, self.config.host, self.config.key_path
         )
         self._arm_open = False
+        self._check_site(self._device)
         logger.info(
             "Connected to %s (firmware %s)",
             self._device.product_model,
@@ -156,7 +172,7 @@ class SeestarDriver:
         if self._device is None:
             return
         with contextlib.suppress(DriverError):
-            await self._run(self._control.stop_stack)
+            await self._run(self._control.abort)
         await self._run(self._control.park)
         self._arm_open = False
 
@@ -181,8 +197,8 @@ class SeestarDriver:
         )
         await self._run(self._control.set_exposure, self.config.sub_exposure_s)
         await self._run(self._control.set_save_subframes, enabled=True)
-        await self._run(self._control.start_stack)
         try:
+            await self._run(self._control.start_stack)
             info = await self._wait_for_frames(wanted, item, ctx)
         finally:
             try:
@@ -212,6 +228,30 @@ class SeestarDriver:
             )
         return DriverResult(frames=frames)
 
+    def _check_site(self, device: DeviceInfo) -> None:
+        """Refuse a configured site far from where the telescope says it is.
+
+        The site drives the Sun safety check, so a sign error in longitude
+        (west entered as positive) must not pass silently.
+        """
+        if device.site_lon_lat is None:
+            return
+        lon, lat = device.site_lon_lat
+        distance = angular_distance_deg(
+            self.config.site_lon_deg / 15,
+            self.config.site_lat_deg,
+            lon / 15,
+            lat,
+        )
+        if distance > _SITE_TOLERANCE_DEG:
+            msg = (
+                f"Configured site (lat {self.config.site_lat_deg}, lon"
+                f" {self.config.site_lon_deg}) is {distance:.1f}° from the"
+                f" telescope's own location (lat {lat}, lon {lon});"
+                " site_lon_deg is east-positive (west is negative)"
+            )
+            raise DriverError(msg)
+
     def _check_sun(self, when: datetime) -> None:
         altitude = sun_altitude_deg(
             when,
@@ -236,6 +276,9 @@ class SeestarDriver:
             self.config.goto_timeout_s,
         )
         if goto.state != "complete":
+            # The firmware may still be slewing or plate solving.
+            with contextlib.suppress(DriverError):
+                await self._run(self._control.abort)
             msg = f"goto {goto.state}: {goto.error}"
             raise DriverError(msg)
         limit = self.config.max_pointing_error_fov * ctx.fov_arcmin / 60

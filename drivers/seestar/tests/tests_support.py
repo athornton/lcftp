@@ -13,7 +13,10 @@ from lcftp_driver_seestar.control import (
 )
 
 DEVICE = DeviceInfo(
-    product_model="Seestar S30 Plus", firmware="9.75", focal_len_mm=160.0
+    product_model="Seestar S30 Plus",
+    firmware="9.75",
+    focal_len_mm=160.0,
+    site_lon_lat=(-111.0, 40.0),
 )
 NAME = "Light_t_10.0s_IRCUT_20261115-031000.fit"
 
@@ -25,6 +28,8 @@ def write_frame(path: Path, *, wcs: bool = True) -> None:
     header["DATE-OBS"] = "2026-11-15T03:10:00.000"
     header["XPIXSZ"] = 2.9
     header["SN"] = "a3497936"
+    header["SITELAT"] = 40.1234
+    header["SITELONG"] = -111.5678
     if wcs:
         header["CTYPE1"] = "RA---TAN"
         header["CTYPE2"] = "DEC--TAN"
@@ -89,6 +94,9 @@ class FakeControl:
     def download(self, target_name: str, name: str, dest: Path) -> Path:
         write_frame(dest)
         return dest
+
+    def abort(self) -> None:
+        pass
 
     def park(self) -> None:
         pass

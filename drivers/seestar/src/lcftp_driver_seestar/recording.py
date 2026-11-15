@@ -8,6 +8,7 @@ the same calls, in the same order, from that log. Identifying values
 """
 
 import json
+import re
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -40,6 +41,16 @@ _SCRUB_KEYS = frozenset(
         "key_path",
     }
 )
+_NULLED_KEYS = frozenset({"site_lon_lat"})
+"""Keys whose values are dropped (set to null) rather than redacted."""
+
+_IDENTIFYING_HEADER = re.compile(
+    r"^(SN|SERIAL.*|.*LAT.*|.*LON.*|OBSGEO.*|SITE.*|HOST.*|IP)$"
+)
+"""FITS keywords that could reveal the site or the device."""
+
+_IPV4 = re.compile(r"\b\d{1,3}(?:\.\d{1,3}){3}\b")
+
 _STRUCTURAL = frozenset(
     {
         "SIMPLE",
@@ -56,14 +67,21 @@ _REPLAY_SIZE = 32
 
 
 def scrub(value: JsonValue) -> JsonValue:
-    """Replace the values of identifying keys, at any depth."""
+    """Replace identifying values (and IP addresses in text), at any depth."""
     if isinstance(value, dict):
-        return {
-            k: REDACTED if k.lower() in _SCRUB_KEYS else scrub(v)
-            for k, v in value.items()
-        }
+        scrubbed: dict[str, JsonValue] = {}
+        for k, v in value.items():
+            if k.lower() in _NULLED_KEYS:
+                scrubbed[k] = None
+            elif k.lower() in _SCRUB_KEYS:
+                scrubbed[k] = REDACTED
+            else:
+                scrubbed[k] = scrub(v)
+        return scrubbed
     if isinstance(value, list):
         return [scrub(v) for v in value]
+    if isinstance(value, str):
+        return _IPV4.sub(REDACTED, value)
     return value
 
 
@@ -88,8 +106,13 @@ def header_cards(path: Path) -> list[list[JsonValue]]:
             value = card.value
             if not isinstance(value, (str, int, float, bool)):
                 value = None
-            if card.keyword.lower() in _SCRUB_KEYS:
+            if (
+                card.keyword.lower() in _SCRUB_KEYS
+                or _IDENTIFYING_HEADER.match(card.keyword)
+            ):
                 value = REDACTED
+            elif isinstance(value, str):
+                value = _IPV4.sub(REDACTED, value)
             cards.append([card.keyword, value, card.comment])
     return cards
 
@@ -111,7 +134,7 @@ class RecordingControl:
         try:
             result = call()
         except SeestarControlError as e:
-            entry["error"] = str(e)
+            entry["error"] = scrub(str(e))
             self._write(entry)
             raise
         entry["result"] = scrub(_jsonable(result))
@@ -182,6 +205,10 @@ class RecordingControl:
     def stop_stack(self) -> None:
         """Stop stacking."""
         self._record("stop_stack", {}, self._inner.stop_stack)
+
+    def abort(self) -> None:
+        """Stop the whole view."""
+        self._record("abort", {}, self._inner.abort)
 
     def list_subframes(self, target_name: str) -> list[str]:
         """Log the sub-frame listing."""
@@ -313,6 +340,10 @@ class ReplayControl:
     def stop_stack(self) -> None:
         """Replay stopping the stack."""
         self._take("stop_stack")
+
+    def abort(self) -> None:
+        """Replay stopping the view."""
+        self._take("abort")
 
     def list_subframes(self, target_name: str) -> list[str]:
         """Replay the sub-frame listing."""

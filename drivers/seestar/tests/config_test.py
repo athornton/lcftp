@@ -39,3 +39,8 @@ def test_rejects_unknown_keys() -> None:
 def test_entry_point_registered() -> None:
     names = {ep.name for ep in entry_points(group="lcftp.drivers")}
     assert "seestar" in names
+
+
+def test_longitude_is_east_positive_within_180() -> None:
+    with pytest.raises(ValidationError):
+        SeestarDriverConfig.model_validate({**SITE, "site_lon_deg": 249.0})

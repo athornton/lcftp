@@ -48,6 +48,8 @@ class DeviceInfo(BaseModel):
     product_model: str
     firmware: str
     focal_len_mm: float | None
+    site_lon_lat: tuple[float, float] | None = None
+    """Where the telescope believes it is (east-positive longitude)."""
 
 
 class GotoResult(BaseModel):
@@ -105,6 +107,9 @@ class SeestarControl(Protocol):
     def stop_stack(self) -> None:
         """Stop stacking (the camera keeps running)."""
 
+    def abort(self) -> None:
+        """Stop whatever the telescope is doing (goto, plate solve, stack)."""
+
     def list_subframes(self, target_name: str) -> list[str]:
         """Return the target's saved sub-frame FITS names, oldest first."""
 
@@ -112,7 +117,7 @@ class SeestarControl(Protocol):
         """Download one sub-frame to exactly ``dest``."""
 
     def park(self) -> None:
-        """Park the arm."""
+        """Park the arm and wait until it is home."""
 
     def disconnect(self) -> None:
         """Close connections to the telescope."""
@@ -155,6 +160,16 @@ def _optional_float(value: Any) -> float | None:
     return float(value) if isinstance(value, (int, float)) else None
 
 
+def _lon_lat(value: Any) -> tuple[float, float] | None:
+    if (
+        isinstance(value, (list, tuple))
+        and len(value) == 2
+        and all(isinstance(v, (int, float)) for v in value)
+    ):
+        return float(value[0]), float(value[1])
+    return None
+
+
 class SeestarPyControl:
     """`SeestarControl` implemented with seestarpy.
 
@@ -167,8 +182,11 @@ class SeestarPyControl:
         it broadcasts a discovery probe on the local network.
     """
 
-    def __init__(self, modules: Any = None) -> None:
+    def __init__(
+        self, modules: Any = None, *, park_timeout_s: float = 180
+    ) -> None:
         self._modules = modules
+        self._park_timeout_s = park_timeout_s
 
     @property
     def _ssp(self) -> Any:
@@ -183,6 +201,21 @@ class SeestarPyControl:
             msg = f"Seestar {what} failed: {e}"
             raise SeestarControlError(msg) from e
 
+    def _rpc(self, what: str, call: Any, *args: Any, **kwargs: Any) -> Any:
+        """Call a JSON-RPC wrapper and raise if the firmware rejected it.
+
+        seestarpy returns error replies (non-zero ``code``) instead of
+        raising; event-style replies have no ``code`` and mean success.
+        """
+        response = self._do(what, call, *args, **kwargs)
+        if isinstance(response, dict):
+            code = response.get("code")
+            error = response.get("error")
+            if (code not in {None, 0}) or error:
+                msg = f"Seestar rejected {what}: code {code}: {error}"
+                raise SeestarControlError(msg)
+        return response
+
     def connect(self, host: str | None, key_path: Path | None) -> DeviceInfo:
         """Connect and identify the telescope."""
         ssp = self._ssp
@@ -192,12 +225,19 @@ class SeestarPyControl:
             self._do("set_key_path", ssp.auth.set_key_path, str(key_path))
         has_key = bool(ssp.auth.KEY_PATH) or key_path is not None
         try:
-            response = ssp.raw.get_device_state(keys=["device"])
-            device = _result(response)["device"]
+            state = _result(
+                self._rpc(
+                    "get_device_state",
+                    ssp.raw.get_device_state,
+                    keys=["device", "location_lon_lat"],
+                )
+            )
+            device = state["device"]
             info = DeviceInfo(
                 product_model=str(device["product_model"]),
                 firmware=str(device["firmware_ver_string"]),
                 focal_len_mm=_optional_float(device.get("focal_len")),
+                site_lon_lat=_lon_lat(state.get("location_lon_lat")),
             )
         except Exception as e:
             msg = f"Cannot read Seestar device state: {e}"
@@ -211,7 +251,7 @@ class SeestarPyControl:
 
     def open_arm(self) -> None:
         """Unpark the arm."""
-        self._do("open", self._ssp.ui.open)
+        self._rpc("open", self._ssp.ui.open)
 
     def goto(
         self,
@@ -246,7 +286,7 @@ class SeestarPyControl:
                 error=error,
             )
         ra, dec = _coords(
-            self._do("read coordinates", ssp.raw.scope_get_equ_coord)
+            self._rpc("read coordinates", ssp.raw.scope_get_equ_coord)
         )
         return GotoResult(
             state="complete",
@@ -258,11 +298,11 @@ class SeestarPyControl:
 
     def set_exposure(self, seconds: int) -> None:
         """Set the sub-frame exposure time."""
-        self._do("set exposure", self._ssp.ui.exposure, seconds)
+        self._rpc("set exposure", self._ssp.ui.exposure, seconds)
 
     def set_save_subframes(self, *, enabled: bool) -> None:
         """Keep each accepted sub-frame."""
-        self._do(
+        self._rpc(
             "set stack setting",
             self._ssp.raw.set_setting,
             stack={"save_discrete_ok_frame": enabled},
@@ -270,12 +310,12 @@ class SeestarPyControl:
 
     def start_stack(self) -> None:
         """Start stacking."""
-        self._do("start stack", self._ssp.ui.start_stack, restart=True)
+        self._rpc("start stack", self._ssp.ui.start_stack, restart=True)
 
     def stack_info(self) -> StackInfo:
         """Read stacking progress from the app state."""
         state = _result(
-            self._do("read app state", self._ssp.raw.iscope_get_app_state)
+            self._rpc("read app state", self._ssp.raw.iscope_get_app_state)
         )
         view = state.get("View", {}) if isinstance(state, dict) else {}
         stack = view.get("Stack", {})
@@ -290,7 +330,11 @@ class SeestarPyControl:
 
     def stop_stack(self) -> None:
         """Stop stacking."""
-        self._do("stop stack", self._ssp.raw.iscope_stop_view, stage="Stack")
+        self._rpc("stop stack", self._ssp.raw.iscope_stop_view, stage="Stack")
+
+    def abort(self) -> None:
+        """Stop the whole view: goto, plate solve and stack."""
+        self._rpc("stop view", self._ssp.raw.iscope_stop_view)
 
     def list_subframes(self, target_name: str) -> list[str]:
         """List the target's sub-frame FITS files, oldest first."""
@@ -322,8 +366,19 @@ class SeestarPyControl:
         return dest
 
     def park(self) -> None:
-        """Park the arm."""
-        self._do("park", self._ssp.ui.close)
+        """Park the arm and wait until the firmware reports it home."""
+        outcome = self._do(
+            "park",
+            self._ssp.ui.goto,
+            "park",
+            verbose=False,
+            timeout=self._park_timeout_s,
+        )
+        state = outcome.get("state") if isinstance(outcome, dict) else None
+        if state != "complete":
+            error = outcome.get("error") if isinstance(outcome, dict) else None
+            msg = f"Seestar park ended {state}: {error}"
+            raise SeestarControlError(msg)
 
     def disconnect(self) -> None:
         """Close connections."""

@@ -45,6 +45,8 @@ def test_record_then_replay_round_trip(tmp_path: Path) -> None:
     (tmp_path / "b").mkdir()
     recorded = _session(RecordingControl(FakeControl(), log), tmp_path / "a")
     replayed = _session(ReplayControl(log), tmp_path / "b")
+    # The device's site is deliberately not recorded (it is a home address).
+    recorded[0] = recorded[0].model_copy(update={"site_lon_lat": None})
     assert replayed == recorded
 
 
@@ -129,3 +131,21 @@ def test_sun_altitude_matches_astropy(when: datetime) -> None:
         expected = get_sun(t).transform_to(AltAz(obstime=t, location=site))
     got = sun_altitude_deg(when, lat_deg=lat, lon_deg=lon)
     assert got == pytest.approx(expected.alt.deg, abs=0.5)
+
+
+def test_recorded_errors_and_site_are_scrubbed(tmp_path: Path) -> None:
+    class Failing(FakeControl):
+        def start_stack(self) -> None:
+            msg = "send_command to 192.168.1.50 failed: timed out"
+            raise SeestarControlError(msg)
+
+    log = tmp_path / "session.jsonl"
+    (tmp_path / "a").mkdir()
+    rec = RecordingControl(Failing(), log)
+    with pytest.raises(SeestarControlError):
+        rec.start_stack()
+    rec.download("t", NAME, tmp_path / "a" / "f.fits")
+    assert "192.168.1.50" not in log.read_text()
+    header = (tmp_path / f"{NAME}.header.json").read_text()
+    assert "40.1234" not in header
+    assert "111.5678" not in header

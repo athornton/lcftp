@@ -28,7 +28,7 @@ configuration) accepts:
 
 | Key | Default | Meaning |
 | --- | --- | --- |
-| `site_lat_deg`, `site_lon_deg` | required | Observatory location, for the Sun-altitude safety check |
+| `site_lat_deg`, `site_lon_deg` | required | Observatory location for the Sun-altitude safety check. Longitude is **east-positive** (west is negative, e.g. Utah is about -111). The driver refuses to connect if this is more than 1° from the location the telescope reports. |
 | `site_elevation_m` | 0 | Observatory elevation |
 | `host` | discovery | Telescope IP address or host name |
 | `key_path` | none | Path to the authentication key (PEM) |
@@ -38,3 +38,21 @@ configuration) accepts:
 | `max_pointing_error_fov` | 0.25 | Largest acceptable pointing error, as a fraction of the field |
 | `poll_interval_s` | 5 | How often to poll stacking progress |
 | `sun_altitude_limit_deg` | -6 | Refuse to slew while the Sun is above this altitude |
+
+## Safety behavior
+
+- The driver refuses to slew while the Sun is above
+  `sun_altitude_limit_deg` at the configured site.
+- Every firmware reply is checked; a rejected command raises an error.
+- Parking waits until the firmware reports the arm is home, and fails
+  loudly otherwise.
+- A failed or abandoned goto stops the whole view (goto, plate solve and
+  stack) on the telescope, and the next command waits for the slew to
+  finish.
+
+## Recording a session for the tests
+
+`scripts/record-seestar-session.py` runs this driver against a real
+telescope through the same sequence the driver contract test uses, and
+records every call. See the script's `--help`. Recordings keep no pixel
+data, no serial numbers, no network addresses and no site location.

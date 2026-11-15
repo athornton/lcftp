@@ -17,7 +17,9 @@ class SeestarDriverConfig(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     site_lat_deg: Annotated[float, Field(ge=-90, le=90)]
-    site_lon_deg: Annotated[float, Field(ge=-180, le=360)]
+    site_lon_deg: Annotated[float, Field(ge=-180, le=180)]
+    """Longitude in degrees, **east-positive** (Utah is about -111)."""
+
     site_elevation_m: float = 0
     host: str | None = None
     """Telescope address; `None` uses seestarpy's discovery."""
