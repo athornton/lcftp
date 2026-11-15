@@ -179,7 +179,7 @@ def test_stack_info_missing_counts_are_zero() -> None:
 def test_save_subframes_and_stop() -> None:
     ns = _fake()
     control = _control(ns)
-    control.set_save_subframes(True)
+    control.set_save_subframes(enabled=True)
     control.stop_stack()
     assert (
         "set_setting",

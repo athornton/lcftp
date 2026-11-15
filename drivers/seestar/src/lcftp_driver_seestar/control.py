@@ -93,7 +93,7 @@ class SeestarControl(Protocol):
     def set_exposure(self, seconds: int) -> None:
         """Set the sub-frame exposure time."""
 
-    def set_save_subframes(self, enabled: bool) -> None:  # noqa: FBT001
+    def set_save_subframes(self, *, enabled: bool) -> None:
         """Keep (or stop keeping) each accepted sub-frame as a FITS file."""
 
     def start_stack(self) -> None:
@@ -260,7 +260,7 @@ class SeestarPyControl:
         """Set the sub-frame exposure time."""
         self._do("set exposure", self._ssp.ui.exposure, seconds)
 
-    def set_save_subframes(self, enabled: bool) -> None:  # noqa: FBT001
+    def set_save_subframes(self, *, enabled: bool) -> None:
         """Keep each accepted sub-frame."""
         self._do(
             "set stack setting",

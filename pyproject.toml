@@ -151,7 +151,7 @@ warn_untyped_fields = true
 asyncio_default_fixture_loop_scope = "function"
 asyncio_mode = "auto"
 addopts = ["--import-mode=importlib"]
-pythonpath = [".", "client/tests"]
+pythonpath = [".", "client/tests", "drivers/seestar/tests"]
 filterwarnings = [
     # testcontainers hasn't updated all of the community modules
     "ignore:.*wait_container_is_ready decorator.*:DeprecationWarning",
