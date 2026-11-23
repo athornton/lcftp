@@ -4,6 +4,7 @@ Layout under the spool root::
 
     profile.json          the observatory profile, cached for offline use
     plan.json             the current plan
+    plans/<plan_id>.json  every plan this client has seen, for ingest
     state.json            item outcomes (all plans) and which were reported
     frames/<id>.fits      captured frames
     frames/<id>.json      their FrameRecord sidecars, written last
@@ -56,7 +57,13 @@ class Spool:
         self.root = root
         self.frames_dir = root / "frames"
         self.bad_dir = root / "bad"
-        for directory in (root, self.frames_dir, self.bad_dir):
+        self.plans_dir = root / "plans"
+        for directory in (
+            root,
+            self.frames_dir,
+            self.bad_dir,
+            self.plans_dir,
+        ):
             directory.mkdir(parents=True, exist_ok=True)
         self._plan_path = root / "plan.json"
         self._state_path = root / "state.json"
@@ -80,8 +87,35 @@ class Spool:
     # Plans and outcomes
 
     def save_plan(self, plan: ObservationPlan) -> None:
-        """Make ``plan`` the current plan."""
+        """Make ``plan`` the current plan, and archive it."""
+        self.archive_plan(plan)
         _atomic_write(self._plan_path, plan.model_dump_json(indent=2))
+
+    def archive_plan(self, plan: ObservationPlan) -> None:
+        """Keep a copy of ``plan`` without making it current."""
+        path = self.plans_dir / f"{plan.plan_id}.json"
+        _atomic_write(path, plan.model_dump_json(indent=2))
+
+    def find_plan(self, prefix: str) -> ObservationPlan:
+        """Return the archived plan whose id starts with ``prefix``.
+
+        Raises
+        ------
+        LookupError
+            If no archived plan, or more than one, matches.
+        """
+        matches = sorted(
+            p
+            for p in self.plans_dir.glob("*.json")
+            if prefix and p.stem.startswith(prefix)
+        )
+        if not matches:
+            msg = f"No known plan with id starting {prefix}"
+            raise LookupError(msg)
+        if len(matches) > 1:
+            msg = f"Plan id prefix {prefix} is ambiguous"
+            raise LookupError(msg)
+        return ObservationPlan.model_validate_json(matches[0].read_text())
 
     def current_plan(self) -> ObservationPlan | None:
         """Return the current plan, if any."""
@@ -101,10 +135,14 @@ class Spool:
         plan = self.current_plan()
         if plan is None:
             return {}
+        return self.outcomes_for(plan.plan_id)
+
+    def outcomes_for(self, plan_id: str) -> dict[str, ItemOutcome]:
+        """Return outcomes of a plan's items, by item id."""
         result = {}
         for data in self._state()["outcomes"].values():
             outcome = ItemOutcome.model_validate(data)
-            if outcome.plan_id == plan.plan_id:
+            if outcome.plan_id == plan_id:
                 result[outcome.item_id] = outcome
         return result
 
