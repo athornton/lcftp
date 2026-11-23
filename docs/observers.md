@@ -73,6 +73,68 @@ frame's file name or `OBJECT` header. Keep to the UTC windows.
 
 ## Sending frames back
 
-*Coming soon: `lcftp ingest` will collect tagged frames from a
-directory and queue them for `lcftp upload`. Until then, keep your
-frames with their tagged names.*
+Point `lcftp ingest` at the directory your software saved frames in
+(subdirectories are searched too), then upload:
+
+```bash
+lcftp ingest ~/Pictures/NINA/2026-11-24
+lcftp upload
+```
+
+Ingest copies each tagged FITS frame (`.fits`, `.fit`, `.fts`) into the
+lcftp spool and records which target it belongs to. **Your original files
+are never moved or changed.** You can run it as often as you like:
+frames it has already taken are recognised and skipped.
+
+Add `--dry-run` to see what would happen without copying anything.
+
+If your software can't put the tag in file names or headers, put each
+target's frames in their own directory and name the target explicitly:
+
+```bash
+lcftp ingest --item lcftp-3f9a1c2e-007 ~/frames/target7
+```
+
+`--item` only applies to frames with no tag of their own.
+
+### When a frame is not taken
+
+Ingest prints one line per file. Anything other than `ingested` means
+the frame was left alone:
+
+| Status | Meaning |
+|---|---|
+| `already_ingested` | This exact file was ingested before |
+| `already_lcftp` | The frame came from an lcftp driver and is already in the spool |
+| `no_tag` | No tag in the file name or `OBJECT` header (see `--item`) |
+| `conflicting_tags` | The file name and `OBJECT` header name different targets |
+| `unknown_plan` | No plan this client knows starts with that id |
+| `unknown_item` | The plan has no target with that number |
+| `wrong_observatory` | The plan belongs to a different observatory |
+| `bad_headers` | Not readable FITS, or no usable `DATE-OBS` or exposure time |
+| `outside_window` | `DATE-OBS` is outside the plan's whole time window |
+| `off_target` | The pointing in the headers is more than one field of view from the target |
+
+`outside_window` and `off_target` are there to catch mistyped or reused
+tags. If you are sure the frame is right, `--force` accepts it anyway.
+A frame taken outside its own target's window, but within the plan's,
+is accepted with a warning: starting late is fine.
+
+### Finishing a plan
+
+When you've ingested everything you are going to for a plan, close it:
+
+```bash
+lcftp ingest --final --plan 3f9a1c2e
+lcftp upload
+```
+
+This tells lcftp which targets you observed and which you didn't. Every
+target with frames is reported as observed; every other target is
+reported as skipped. **Until you do this, nobody knows which targets
+were missed**, and the outcome can only be reported once, so run it
+when you're done, not before. `lcftp status` lists plans that still
+need `--final`.
+
+You can combine the last ingest and the finish:
+`lcftp ingest --final --plan 3f9a1c2e ~/frames`.

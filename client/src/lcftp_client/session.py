@@ -35,6 +35,8 @@ class ClientStatus(BaseModel):
 
     pending_frames: int
     bad_frames: int
+    unfinalised_plans: list[str] = []
+    """Plans with ingested frames awaiting ``lcftp ingest --final``."""
 
 
 class LcftpClient:
@@ -148,6 +150,7 @@ class LcftpClient:
             outcomes=dict(counts),
             pending_frames=len(self.spool.pending_frames()),
             bad_frames=self.spool.bad_count(),
+            unfinalised_plans=self.spool.unfinalised_plans(),
         )
 
     async def night_once(

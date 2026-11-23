@@ -20,6 +20,8 @@ from .api import ServerClient
 from .clock import Clock
 from .config import ClientConfig, default_config_path, load_config, save_config
 from .export import write_plan_csv
+from .ingest.finalise import finalise_plan
+from .ingest.ingester import IngestReport, ingest_dir
 from .session import LcftpClient
 from .spool import Spool
 from .uploader import UploadSummary
@@ -182,6 +184,88 @@ def export(
     with path.open("w", newline="", encoding="utf-8") as f:
         write_plan_csv(plan, f)
     click.echo(f"Wrote {len(plan.items)} targets to {path}", err=True)
+
+
+def _echo_report(report: IngestReport) -> None:
+    for r in report.results:
+        parts = [str(r.status), str(r.path)]
+        parts += [p for p in (r.tag, r.detail, r.warning) if p]
+        click.echo("  ".join(parts))
+    totals = ", ".join(f"{n} {s}" for s, n in sorted(report.counts().items()))
+    click.echo(f"Total: {totals or 'no FITS files found'}")
+
+
+@main.command()
+@click.argument(
+    "directory",
+    required=False,
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+)
+@click.option(
+    "--item", "item_tag", help="Target tag for frames that carry none."
+)
+@click.option(
+    "--dry-run", is_flag=True, help="Report without copying anything."
+)
+@click.option(
+    "--force",
+    is_flag=True,
+    help="Accept frames outside the plan window or away from the target.",
+)
+@click.option(
+    "--final",
+    is_flag=True,
+    help="Then record outcomes for the plan; run once you are done.",
+)
+@click.option("--plan", "plan8", help="Plan id (or its first 8 characters).")
+@click.pass_context
+def ingest(  # noqa: PLR0917
+    ctx: click.Context,
+    directory: Path | None,
+    item_tag: str | None,
+    dry_run: bool,  # noqa: FBT001
+    force: bool,  # noqa: FBT001
+    final: bool,  # noqa: FBT001
+    plan8: str | None,
+) -> None:
+    """Queue frames taken with your own software for upload.
+
+    Frames are matched to plan items by the target tag in their file
+    name or OBJECT header. Originals are copied, never changed.
+    """
+    if final and not plan8:
+        msg = "--final needs --plan"
+        raise click.UsageError(msg)
+    if directory is None and not final:
+        msg = "Give a directory of frames (or --final --plan to finish)"
+        raise click.UsageError(msg)
+    spool = Spool(_config(ctx).spool_dir)
+    profile = spool.profile()
+    if profile is None:
+        msg = "No observatory profile cached; run lcftp plan first"
+        raise click.ClickException(msg)
+    if directory is not None:
+        _echo_report(
+            ingest_dir(
+                spool,
+                profile,
+                directory,
+                item_tag=item_tag,
+                force=force,
+                dry_run=dry_run,
+            )
+        )
+    if final and plan8 and not dry_run:
+        try:
+            plan = spool.find_plan(plan8)
+        except LookupError as e:
+            raise click.ClickException(str(e)) from e
+        recorded = finalise_plan(spool, plan)
+        observed = sum(o.status == "observed" for o in recorded)
+        click.echo(
+            f"Finalised {plan.plan_id}: {observed} observed, "
+            f"{len(recorded) - observed} skipped"
+        )
 
 
 @main.command()

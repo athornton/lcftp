@@ -7,6 +7,7 @@ import pytest
 import respx
 from click.testing import CliRunner
 from support_api import BASE, FakeApi
+from support_fits import write_fits
 
 from lcftp_client import cli
 from lcftp_client.api import LcftpApiError
@@ -243,3 +244,63 @@ def test_export_plan_file_archives(
     output = _invoke(config, "export", "--plan-file", str(plan_file))
     assert "lcftp-cccccccc-000" in output
     assert Spool(tmp_path / "s").find_plan("cccccccc") == other
+
+
+def test_cli_ingest_then_final(
+    api: FakeApi,
+    tmp_path: Path,
+    plan_factory: Callable[..., ObservationPlan],
+) -> None:
+    config = _init_and_plan(tmp_path)
+    plan_id = "cccccccc" + "0" * 24
+    plan_file = tmp_path / "p.json"
+    plan_file.write_text(plan_factory(plan_id=plan_id).model_dump_json())
+    _invoke(config, "export", "--plan-file", str(plan_file))
+    src = tmp_path / "frames"
+    write_fits(
+        src / "lcftp-cccccccc-001_LIGHT.fits",
+        DATE_OBS="2026-11-10T03:12:00",
+        EXPTIME=60.0,
+    )
+    output = _invoke(config, "ingest", str(src))
+    assert "ingested" in output
+    assert "lcftp-cccccccc-001" in output
+    status = ClientStatus.model_validate_json(_invoke(config, "status"))
+    assert status.unfinalised_plans == [plan_id]
+    assert status.pending_frames == 1
+
+    output = _invoke(config, "ingest", "--final", "--plan", "cccccccc")
+    assert f"Finalised {plan_id}: 1 observed, 2 skipped" in output
+    status = ClientStatus.model_validate_json(_invoke(config, "status"))
+    assert status.unfinalised_plans == []
+
+
+def test_cli_final_requires_plan(api: FakeApi, tmp_path: Path) -> None:
+    config = _init_and_plan(tmp_path)
+    result = CliRunner().invoke(
+        cli.main, ["--config", str(config), "ingest", "--final"]
+    )
+    assert result.exit_code != 0
+    assert "--plan" in result.output
+
+
+def test_cli_ingest_requires_dir(api: FakeApi, tmp_path: Path) -> None:
+    config = _init_and_plan(tmp_path)
+    result = CliRunner().invoke(cli.main, ["--config", str(config), "ingest"])
+    assert result.exit_code != 0
+
+
+def test_cli_ingest_needs_profile(api: FakeApi, tmp_path: Path) -> None:
+    config = tmp_path / "client.toml"
+    spool = tmp_path / "s"
+    _invoke(
+        config, "init", "--server", BASE, "--token", "t", "--spool", str(spool)
+    )
+    (spool / "profile.json").unlink(missing_ok=True)
+    (tmp_path / "frames").mkdir()
+    result = CliRunner().invoke(
+        cli.main,
+        ["--config", str(config), "ingest", str(tmp_path / "frames")],
+    )
+    assert result.exit_code != 0
+    assert "lcftp plan" in result.output
