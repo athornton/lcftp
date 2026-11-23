@@ -5,11 +5,9 @@ import contextlib
 from collections.abc import Awaitable
 from datetime import datetime
 
-from lcftp_models.checksums import compute_checksums
 from lcftp_models.observatory import ObservatoryProfile
 from lcftp_models.plan import ObservationPlan, PlanItem
 from lcftp_models.upload import (
-    FrameRecord,
     ItemOutcome,
     OutcomeReason,
     OutcomeStatus,
@@ -17,7 +15,7 @@ from lcftp_models.upload import (
 
 from .clock import Clock
 from .drivers.base import CapturedFrame, ObservationContext, TelescopeDriver
-from .fits import stamp_provenance
+from .provenance import commit_frame
 from .spool import Spool
 
 __all__ = ["STOP_POLL_S", "Runner"]
@@ -173,35 +171,21 @@ class Runner:
     def _commit(
         self, plan: ObservationPlan, item: PlanItem, frame: CapturedFrame
     ) -> None:
-        stamp_provenance(
+        commit_frame(
+            self._spool,
             frame.path,
-            plan_id=plan.plan_id,
-            item_id=item.item_id,
+            frame_id=frame.frame_id,
+            plan=plan,
+            item=item,
             observatory_id=self._observatory.id,
-            dia_object_id=item.candidate.dia_object_id,
-            alert_id=item.candidate.latest_alert_id,
             driver=self._driver.name,
             driver_version=self._driver.version,
-        )
-        self._spool.commit_frame(
-            FrameRecord(
-                frame_id=frame.frame_id,
-                plan_id=plan.plan_id,
-                item_id=item.item_id,
-                observatory_id=self._observatory.id,
-                dia_object_id=item.candidate.dia_object_id,
-                alert_id=item.candidate.latest_alert_id,
-                obs_start=frame.obs_start,
-                exposure_s=frame.exposure_s,
-                filter=frame.filter,
-                driver=self._driver.name,
-                driver_version=self._driver.version,
-                ra=frame.ra,
-                dec=frame.dec,
-                size_bytes=frame.path.stat().st_size,
-                checksums=compute_checksums(frame.path),
-                driver_metadata=frame.driver_metadata,
-            )
+            obs_start=frame.obs_start,
+            exposure_s=frame.exposure_s,
+            filter=frame.filter,
+            ra=frame.ra,
+            dec=frame.dec,
+            driver_metadata=frame.driver_metadata,
         )
 
     def _record(
