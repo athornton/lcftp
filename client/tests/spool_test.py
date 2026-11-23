@@ -1,6 +1,6 @@
 import os
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import uuid4
 
@@ -147,3 +147,66 @@ def test_stop_flag(tmp_path: Path) -> None:
     assert Spool(tmp_path).stop_requested()
     spool.clear_stop()
     assert not spool.stop_requested()
+
+
+def test_save_plan_archives(
+    tmp_path: Path, plan_factory: Callable[..., ObservationPlan]
+) -> None:
+    spool = Spool(tmp_path)
+    spool.save_plan(plan_factory(plan_id="aaaaaaaa1"))
+    spool.save_plan(plan_factory(plan_id="bbbbbbbb1"))
+    assert spool.find_plan("aaaaaaaa").plan_id == "aaaaaaaa1"
+    current = spool.current_plan()
+    assert current is not None
+    assert current.plan_id == "bbbbbbbb1"
+
+
+def test_archive_plan_keeps_current(
+    tmp_path: Path, plan_factory: Callable[..., ObservationPlan]
+) -> None:
+    spool = Spool(tmp_path)
+    spool.save_plan(plan_factory(plan_id="aaaaaaaa1"))
+    spool.archive_plan(plan_factory(plan_id="bbbbbbbb1"))
+    current = spool.current_plan()
+    assert current is not None
+    assert current.plan_id == "aaaaaaaa1"
+    assert spool.find_plan("bbbbbbbb").plan_id == "bbbbbbbb1"
+
+
+def test_find_plan_unknown_and_ambiguous(
+    tmp_path: Path, plan_factory: Callable[..., ObservationPlan]
+) -> None:
+    spool = Spool(tmp_path)
+    with pytest.raises(LookupError, match="cccccccc"):
+        spool.find_plan("cccccccc")
+    spool.archive_plan(plan_factory(plan_id="aaaaaaaa1"))
+    spool.archive_plan(plan_factory(plan_id="aaaaaaaa2"))
+    with pytest.raises(LookupError, match="ambiguous"):
+        spool.find_plan("aaaaaaaa")
+
+
+def test_outcomes_for(tmp_path: Path) -> None:
+    spool = Spool(tmp_path)
+    spool.record_outcome(_outcome("000", plan_id="p1"))
+    spool.record_outcome(_outcome("001", plan_id="p2"))
+    spool.record_outcome(_outcome("002", plan_id="p2"))
+    assert set(spool.outcomes_for("p2")) == {"001", "002"}
+    assert spool.outcomes_for("p2")["001"].plan_id == "p2"
+
+
+def test_ingest_bookkeeping(tmp_path: Path) -> None:
+    spool = Spool(tmp_path)
+    t = datetime(2026, 11, 24, 3, tzinfo=UTC)
+    m = timedelta(minutes=1)
+    spool.record_ingested("h1", "p", "001", t + 2 * m, t + 3 * m)
+    spool.record_ingested("h2", "p", "001", t, t + m)
+    spool.record_ingested("h3", "p", "002", t + 5 * m, t + 6 * m)
+    spans = spool.ingested_spans("p")
+    assert spans["001"] == (t, t + 3 * m)
+    assert spans["002"] == (t + 5 * m, t + 6 * m)
+    assert spool.ingested_spans("other") == {}
+    assert spool.unfinalised_plans() == ["p"]
+    reopened = Spool(tmp_path)
+    assert reopened.ingested_hashes() == {"h1", "h2", "h3"}
+    reopened.mark_finalised("p")
+    assert reopened.unfinalised_plans() == []
