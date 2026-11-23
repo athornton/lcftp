@@ -1,6 +1,7 @@
 """Command-line interface for the LCFTP observatory client."""
 
 import asyncio
+import io
 import logging
 import signal
 from collections.abc import Awaitable, Callable
@@ -11,11 +12,14 @@ from typing import Protocol
 from zoneinfo import ZoneInfo
 
 import click
-from pydantic import HttpUrl, SecretStr
+from pydantic import HttpUrl, SecretStr, ValidationError
+
+from lcftp_models.plan import ObservationPlan
 
 from .api import ServerClient
 from .clock import Clock
 from .config import ClientConfig, default_config_path, load_config, save_config
+from .export import write_plan_csv
 from .session import LcftpClient
 from .spool import Spool
 from .uploader import UploadSummary
@@ -140,6 +144,44 @@ def run(ctx: click.Context) -> None:
             await client.run()
 
     asyncio.run(execute())
+
+
+@main.command()
+@click.argument(
+    "path", required=False, type=click.Path(dir_okay=False, path_type=Path)
+)
+@click.option(
+    "--plan-file",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    help="Export this saved plan JSON instead of the current plan.",
+)
+@click.pass_context
+def export(
+    ctx: click.Context, path: Path | None, plan_file: Path | None
+) -> None:
+    """Write a plan as CSV (NINA-importable) to PATH, or to stdout."""
+    spool = Spool(_config(ctx).spool_dir)
+    if plan_file is not None:
+        try:
+            plan = ObservationPlan.model_validate_json(plan_file.read_text())
+        except ValidationError as e:
+            msg = f"{plan_file} is not an lcftp plan: {e}"
+            raise click.ClickException(msg) from e
+        spool.archive_plan(plan)
+    else:
+        current = spool.current_plan()
+        if current is None:
+            msg = "There is no plan to export; run lcftp plan first"
+            raise click.ClickException(msg)
+        plan = current
+    if path is None:
+        buf = io.StringIO()
+        write_plan_csv(plan, buf)
+        click.echo(buf.getvalue(), nl=False)
+        return
+    with path.open("w", newline="", encoding="utf-8") as f:
+        write_plan_csv(plan, f)
+    click.echo(f"Wrote {len(plan.items)} targets to {path}", err=True)
 
 
 @main.command()

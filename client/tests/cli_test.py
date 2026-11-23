@@ -13,6 +13,7 @@ from lcftp_client.api import LcftpApiError
 from lcftp_client.clock import FakeClock
 from lcftp_client.config import ClientConfig, load_config
 from lcftp_client.session import ClientStatus, LcftpClient
+from lcftp_client.spool import Spool
 from lcftp_client.uploader import UploadSummary
 from lcftp_models.errors import ErrorCode
 from lcftp_models.observatory import ObservatoryProfile
@@ -181,3 +182,64 @@ async def test_daemon_survives_errors() -> None:
     await cli.daemon_loop(client, time(19), time(5), "America/Phoenix", wait)
     assert len(client.nights) == 1
     assert cli.UPLOAD_RETRY in waits
+
+
+def _init_and_plan(tmp_path: Path, *, plan: bool = True) -> Path:
+    config = tmp_path / "client.toml"
+    _invoke(
+        config,
+        "init",
+        "--server",
+        BASE,
+        "--token",
+        "t",
+        "--spool",
+        str(tmp_path / "s"),
+    )
+    if plan:
+        _invoke(
+            config,
+            "plan",
+            "--start",
+            "2026-11-10T03:00:00Z",
+            "--end",
+            "2026-11-10T11:00:00Z",
+        )
+    return config
+
+
+def test_export_current_plan(api: FakeApi, tmp_path: Path) -> None:
+    config = _init_and_plan(tmp_path)
+    out = tmp_path / "tonight.csv"
+    _invoke(config, "export", str(out))
+    lines = out.read_text().splitlines()
+    assert lines[0].startswith("Familiar Name,Catalogue Entry,")
+    assert len(lines) == 4
+
+
+def test_export_to_stdout(api: FakeApi, tmp_path: Path) -> None:
+    config = _init_and_plan(tmp_path)
+    output = _invoke(config, "export")
+    assert output.startswith("Familiar Name,")
+    assert "lcftp-p-000" in output
+
+
+def test_export_no_plan(api: FakeApi, tmp_path: Path) -> None:
+    config = _init_and_plan(tmp_path, plan=False)
+    result = CliRunner().invoke(cli.main, ["--config", str(config), "export"])
+    assert result.exit_code != 0
+    assert "lcftp plan" in result.output
+
+
+def test_export_plan_file_archives(
+    api: FakeApi,
+    tmp_path: Path,
+    plan_factory: Callable[..., ObservationPlan],
+) -> None:
+    config = _init_and_plan(tmp_path, plan=False)
+    plan_file = tmp_path / "p.json"
+    other = plan_factory(plan_id="cccccccc9")
+    plan_file.write_text(other.model_dump_json())
+    output = _invoke(config, "export", "--plan-file", str(plan_file))
+    assert "lcftp-cccccccc-000" in output
+    assert Spool(tmp_path / "s").find_plan("cccccccc") == other
