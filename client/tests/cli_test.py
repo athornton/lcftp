@@ -304,3 +304,12 @@ def test_cli_ingest_needs_profile(api: FakeApi, tmp_path: Path) -> None:
     )
     assert result.exit_code != 0
     assert "lcftp plan" in result.output
+
+
+def test_export_archives_current_plan(api: FakeApi, tmp_path: Path) -> None:
+    config = _init_and_plan(tmp_path)
+    spool = Spool(tmp_path / "s")
+    for archived in spool.plans_dir.glob("*.json"):
+        archived.unlink()
+    _invoke(config, "export")
+    assert spool.find_plan("p").plan_id == "p"

@@ -82,8 +82,9 @@ lcftp upload
 ```
 
 Ingest copies each tagged FITS frame (`.fits`, `.fit`, `.fts`) into the
-lcftp spool and records which target it belongs to. **Your original files
-are never moved or changed.** You can run it as often as you like:
+lcftp spool and records which target it belongs to, along with the file's
+name (not its full path on your disk). **Your original files are never
+moved or changed.** You can run it as often as you like:
 frames it has already taken are recognised and skipped.
 
 Add `--dry-run` to see what would happen without copying anything.
@@ -114,6 +115,7 @@ the frame was left alone:
 | `bad_headers` | Not readable FITS, or no usable `DATE-OBS` or exposure time |
 | `outside_window` | `DATE-OBS` is outside the plan's whole time window |
 | `off_target` | The pointing in the headers is more than one field of view from the target |
+| `copy_failed` | The file couldn't be copied into the spool (the reason is shown); fix it and run ingest again |
 
 `outside_window` and `off_target` are there to catch mistyped or reused
 tags. If you are sure the frame is right, `--force` accepts it anyway.

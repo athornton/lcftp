@@ -176,6 +176,7 @@ def export(
             msg = "There is no plan to export; run lcftp plan first"
             raise click.ClickException(msg)
         plan = current
+        spool.archive_plan(plan)
     if path is None:
         buf = io.StringIO()
         write_plan_csv(plan, buf)

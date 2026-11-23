@@ -98,3 +98,11 @@ def test_metadata(tmp_path: Path) -> None:
         TELESCOP="C8",
     )
     assert read_frame_info(path).metadata == {"TELESCOP": "C8"}
+
+
+def test_non_finite_exposure(tmp_path: Path) -> None:
+    path = write_fits(
+        tmp_path / "a.fits", DATE_OBS="2026-11-24T03:15:00", EXPTIME="nan"
+    )
+    with pytest.raises(HeaderError):
+        read_frame_info(path)

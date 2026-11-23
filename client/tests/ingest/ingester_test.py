@@ -1,3 +1,5 @@
+import json
+import shutil
 from collections.abc import Callable
 from pathlib import Path
 
@@ -56,7 +58,7 @@ def test_ingests_tagged_filename(
     assert record.plan_id == PLAN_ID
     assert record.item_id == "001"
     assert record.driver == "ingest"
-    assert record.driver_metadata["source_path"] == str(path)
+    assert record.driver_metadata["source_name"] == path.name
     assert record.driver_metadata["TELESCOP"] == "C8"
     assert record.ra == 31.0
     assert (path.read_bytes(), path.stat().st_mtime_ns) == before
@@ -200,3 +202,64 @@ def test_ignores_other_files(
     (src / f"{TAG1}.xisf").write_text("x")
     report = ingest_dir(spool, profile, src)
     assert report.counts() == {"ingested": 1}
+
+
+def test_read_only_source(
+    spool: Spool, profile: ObservatoryProfile, tmp_path: Path
+) -> None:
+    src = tmp_path / "src"
+    path = _frame(src, f"{TAG1}.fits")
+    path.chmod(0o444)
+    assert _statuses(spool, profile, src) == [FrameStatus.ingested]
+
+
+def test_copy_failure_is_per_file(
+    spool: Spool,
+    profile: ObservatoryProfile,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    src = tmp_path / "src"
+    _frame(src, f"a_{TAG1}.fits")
+    _frame(src, f"b_{TAG2}.fits", DATE_OBS=IN_002, RA=32.0)
+    real = shutil.copyfile
+
+    def flaky(source: Path, dest: Path) -> object:
+        if source.name.startswith("a_"):
+            Path(dest).write_bytes(b"partial")
+            raise OSError("disk full")
+        return real(source, dest)
+
+    monkeypatch.setattr(shutil, "copyfile", flaky)
+    report = ingest_dir(spool, profile, src)
+    assert [r.status for r in report.results] == [
+        FrameStatus.copy_failed,
+        FrameStatus.ingested,
+    ]
+    assert "disk full" in (report.results[0].detail or "")
+    assert len(list(spool.frames_dir.glob("*.fits"))) == 1
+
+
+def test_reingest_after_lost_record_does_not_duplicate(
+    spool: Spool, profile: ObservatoryProfile, tmp_path: Path
+) -> None:
+    src = tmp_path / "src"
+    _frame(src, f"{TAG1}.fits")
+    ingest_dir(spool, profile, src)
+    state_path = spool.root / "state.json"
+    state = json.loads(state_path.read_text())
+    del state["ingest"]
+    state_path.write_text(json.dumps(state))
+    ingest_dir(spool, profile, src)
+    assert len(spool.pending_frames()) == 1
+
+
+def test_records_file_name_not_path(
+    spool: Spool, profile: ObservatoryProfile, tmp_path: Path
+) -> None:
+    src = tmp_path / "src"
+    _frame(src, f"{TAG1}.fits")
+    ingest_dir(spool, profile, src)
+    [record] = spool.pending_frames()
+    assert record.driver_metadata["source_name"] == f"{TAG1}.fits"
+    assert "source_path" not in record.driver_metadata

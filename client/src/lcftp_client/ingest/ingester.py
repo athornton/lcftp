@@ -12,7 +12,7 @@ from datetime import timedelta
 from enum import StrEnum
 from pathlib import Path
 from typing import NamedTuple
-from uuid import uuid4
+from uuid import UUID, uuid5
 
 import astropy.units as u
 from astropy.coordinates import SkyCoord
@@ -29,6 +29,7 @@ from .headers import FrameInfo, HeaderError, read_frame_info
 
 __all__ = [
     "FITS_SUFFIXES",
+    "FRAME_ID_NAMESPACE",
     "INGEST_DRIVER",
     "FrameResult",
     "FrameStatus",
@@ -38,6 +39,10 @@ __all__ = [
 
 FITS_SUFFIXES = frozenset({".fits", ".fit", ".fts"})
 INGEST_DRIVER = "ingest"
+
+FRAME_ID_NAMESPACE = UUID("9b8c3e1a-5f0d-4c55-9a51-6c0f2f7e6a41")
+"""Ingested frame ids are ``uuid5(FRAME_ID_NAMESPACE, sha256)`` of the
+source file, so re-ingesting a file can never produce a second frame."""
 
 
 class FrameStatus(StrEnum):
@@ -54,6 +59,7 @@ class FrameStatus(StrEnum):
     bad_headers = "bad_headers"
     outside_window = "outside_window"
     off_target = "off_target"
+    copy_failed = "copy_failed"
 
 
 class FrameResult(BaseModel):
@@ -161,9 +167,15 @@ def _copy_and_commit(
     spool: Spool, profile: ObservatoryProfile, path: Path, frame: _Accepted
 ) -> None:
     info, plan, item = frame.info, frame.plan, frame.item
-    frame_id = uuid4()
+    frame_id = uuid5(FRAME_ID_NAMESPACE, frame.sha256)
     dest = spool.new_frame_path(frame_id)
-    shutil.copy2(path, dest)
+    if frame_id in {r.frame_id for r in spool.pending_frames()}:
+        # Committed by an earlier run that died before recording the hash.
+        _record(spool, frame)
+        return
+    # copyfile, not copy2: the copy must be writable for stamping even
+    # when the observer's original is read-only.
+    shutil.copyfile(path, dest)
     commit_frame(
         spool,
         dest,
@@ -180,14 +192,19 @@ def _copy_and_commit(
         dec=item.candidate.dec if info.dec is None else info.dec,
         driver_metadata={
             **info.metadata,
-            "source_path": str(path),
+            "source_name": path.name,
             "source_sha256": frame.sha256,
         },
     )
+    _record(spool, frame)
+
+
+def _record(spool: Spool, frame: _Accepted) -> None:
+    info = frame.info
     spool.record_ingested(
         frame.sha256,
-        plan.plan_id,
-        item.item_id,
+        frame.plan.plan_id,
+        frame.item.item_id,
         info.obs_start,
         info.obs_start + timedelta(seconds=info.exposure_s),
     )
@@ -265,9 +282,19 @@ def _ingest_one(
     if not item.not_before <= info.obs_start <= item.not_after:
         warning = "taken outside the target's planned window"
     if not dry_run:
-        _copy_and_commit(
-            spool, profile, path, _Accepted(sha256, info, plan, item)
-        )
+        try:
+            _copy_and_commit(
+                spool, profile, path, _Accepted(sha256, info, plan, item)
+            )
+        except OSError as e:
+            frame_id = uuid5(FRAME_ID_NAMESPACE, sha256)
+            spool.remove_frame(frame_id)
+            return FrameResult(
+                path=path,
+                status=FrameStatus.copy_failed,
+                tag=tag,
+                detail=str(e),
+            )
     seen.add(sha256)
     return FrameResult(
         path=path, status=FrameStatus.ingested, tag=tag, warning=warning

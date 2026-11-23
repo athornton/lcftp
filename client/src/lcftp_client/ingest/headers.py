@@ -1,5 +1,6 @@
 """Read what ingest needs from an observer's FITS headers."""
 
+import math
 from datetime import UTC
 from pathlib import Path
 from typing import Annotated, Any
@@ -68,7 +69,7 @@ def _exposure(header: Any) -> float:
             except (TypeError, ValueError) as e:
                 msg = f"unreadable {key} {header[key]!r}"
                 raise HeaderError(msg) from e
-            if value <= 0:
+            if not math.isfinite(value) or value <= 0:
                 msg = f"{key} must be positive, got {value}"
                 raise HeaderError(msg)
             return value
