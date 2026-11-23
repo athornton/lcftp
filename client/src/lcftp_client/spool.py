@@ -5,7 +5,8 @@ Layout under the spool root::
     profile.json          the observatory profile, cached for offline use
     plan.json             the current plan
     plans/<plan_id>.json  every plan this client has seen, for ingest
-    state.json            item outcomes (all plans) and which were reported
+    state.json            item outcomes (all plans), which were reported, and
+                          ingest bookkeeping
     frames/<id>.fits      captured frames
     frames/<id>.json      their FrameRecord sidecars, written last
     bad/                  frames that cannot be uploaded, with .reason files
@@ -20,6 +21,7 @@ import json
 import os
 import tempfile
 from collections.abc import Sequence
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 from uuid import UUID
@@ -242,6 +244,63 @@ class Spool:
             recovered.append(frame_id)
         return recovered
 
+    # Ingest bookkeeping
+
+    def ingested_hashes(self) -> set[str]:
+        """Return SHA-256 hashes of every source file ever ingested."""
+        return set(self._ingest_state(self._state())["hashes"])
+
+    def record_ingested(
+        self,
+        sha256: str,
+        plan_id: str,
+        item_id: str,
+        start: datetime,
+        end: datetime,
+    ) -> None:
+        """Record an ingested frame and widen its item's time span."""
+        state = self._state()
+        ingest = self._ingest_state(state)
+        ingest["hashes"] = sorted({*ingest["hashes"], sha256})
+        key = _key(plan_id, item_id)
+        if key in ingest["spans"]:
+            first, last = (
+                datetime.fromisoformat(t) for t in ingest["spans"][key]
+            )
+            start, end = min(start, first), max(end, last)
+        ingest["spans"][key] = [start.isoformat(), end.isoformat()]
+        self._save_state(state)
+
+    def ingested_spans(
+        self, plan_id: str
+    ) -> dict[str, tuple[datetime, datetime]]:
+        """Return the earliest start and latest end of ingested frames,
+        by item id.
+        """
+        prefix = f"{plan_id}/"
+        spans = self._ingest_state(self._state())["spans"]
+        return {
+            key.removeprefix(prefix): (
+                datetime.fromisoformat(first),
+                datetime.fromisoformat(last),
+            )
+            for key, (first, last) in spans.items()
+            if key.startswith(prefix)
+        }
+
+    def unfinalised_plans(self) -> list[str]:
+        """Return ids of plans with ingested frames not yet finalised."""
+        ingest = self._ingest_state(self._state())
+        plans = {key.split("/", 1)[0] for key in ingest["spans"]}
+        return sorted(plans - set(ingest["finalised"]))
+
+    def mark_finalised(self, plan_id: str) -> None:
+        """Record that a plan's outcomes have been recorded by ingest."""
+        state = self._state()
+        ingest = self._ingest_state(state)
+        ingest["finalised"] = sorted({*ingest["finalised"], plan_id})
+        self._save_state(state)
+
     # Stop flag
 
     def request_stop(self) -> None:
@@ -266,6 +325,14 @@ class Spool:
 
     def _save_state(self, state: dict[str, Any]) -> None:
         _atomic_write(self._state_path, json.dumps(state, indent=2))
+
+    @staticmethod
+    def _ingest_state(state: dict[str, Any]) -> dict[str, Any]:
+        ingest: dict[str, Any] = state.setdefault("ingest", {})
+        ingest.setdefault("hashes", [])
+        ingest.setdefault("spans", {})
+        ingest.setdefault("finalised", [])
+        return ingest
 
     @staticmethod
     def _read_sidecar(path: Path) -> FrameRecord | None:

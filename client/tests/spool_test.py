@@ -1,6 +1,6 @@
 import os
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import uuid4
 
@@ -192,3 +192,21 @@ def test_outcomes_for(tmp_path: Path) -> None:
     spool.record_outcome(_outcome("002", plan_id="p2"))
     assert set(spool.outcomes_for("p2")) == {"001", "002"}
     assert spool.outcomes_for("p2")["001"].plan_id == "p2"
+
+
+def test_ingest_bookkeeping(tmp_path: Path) -> None:
+    spool = Spool(tmp_path)
+    t = datetime(2026, 11, 24, 3, tzinfo=UTC)
+    m = timedelta(minutes=1)
+    spool.record_ingested("h1", "p", "001", t + 2 * m, t + 3 * m)
+    spool.record_ingested("h2", "p", "001", t, t + m)
+    spool.record_ingested("h3", "p", "002", t + 5 * m, t + 6 * m)
+    spans = spool.ingested_spans("p")
+    assert spans["001"] == (t, t + 3 * m)
+    assert spans["002"] == (t + 5 * m, t + 6 * m)
+    assert spool.ingested_spans("other") == {}
+    assert spool.unfinalised_plans() == ["p"]
+    reopened = Spool(tmp_path)
+    assert reopened.ingested_hashes() == {"h1", "h2", "h3"}
+    reopened.mark_finalised("p")
+    assert reopened.unfinalised_plans() == []
