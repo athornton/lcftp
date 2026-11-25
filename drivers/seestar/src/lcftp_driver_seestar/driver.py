@@ -69,7 +69,7 @@ def _package_version(name: str) -> str:
 def _celestial(header: fits.Header) -> bool:
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", FITSFixedWarning)
-        return bool(WCS(header).has_celestial)
+        return bool(WCS(header, naxis=2).has_celestial)
 
 
 def _obs_start(header: fits.Header, fallback: datetime) -> datetime:
@@ -83,12 +83,32 @@ def _obs_start(header: fits.Header, fallback: datetime) -> datetime:
     return when if when.tzinfo else when.replace(tzinfo=UTC)
 
 
+def _wcs_centre(header: fits.Header) -> tuple[float, float] | None:
+    """RA/Dec (degrees) at the image centre, if the header has a WCS."""
+    width, height = header.get("NAXIS1"), header.get("NAXIS2")
+    if not isinstance(width, int) or not isinstance(height, int):
+        return None
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", FITSFixedWarning)
+        wcs = WCS(header, naxis=2).celestial
+    if not wcs.has_celestial:
+        return None
+    ra, dec = wcs.all_pix2world((width - 1) / 2, (height - 1) / 2, 0)
+    return float(ra), float(dec)
+
+
 def _pointing(header: fits.Header, goto: GotoResult) -> tuple[float, float]:
-    """RA/Dec (degrees) of the frame: WCS centre, header, or the mount."""
-    for ra_key, dec_key in (("CRVAL1", "CRVAL2"), ("RA", "DEC")):
-        ra, dec = header.get(ra_key), header.get(dec_key)
-        if isinstance(ra, (int, float)) and isinstance(dec, (int, float)):
-            return float(ra), float(dec)
+    """RA/Dec (degrees) of the frame: WCS centre, header, or the mount.
+
+    The centre is computed from the whole WCS: the Seestar's solver puts
+    the reference pixel (``CRPIX``/``CRVAL``) far from the image centre.
+    """
+    centre = _wcs_centre(header)
+    if centre is not None:
+        return centre
+    ra, dec = header.get("RA"), header.get("DEC")
+    if isinstance(ra, (int, float)) and isinstance(dec, (int, float)):
+        return float(ra), float(dec)
     if goto.ra_hours is None or goto.dec_deg is None:
         msg = "no pointing in frame header or goto result"
         raise DriverError(msg)

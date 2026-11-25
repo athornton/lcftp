@@ -217,7 +217,7 @@ async def test_frames_carry_pointing_and_metadata(tmp_path: Path) -> None:
     assert frame.exposure_s == 10.0
     assert frame.filter == "IRCUT"
     assert frame.obs_start == datetime(2026, 11, 15, 3, 10, tzinfo=UTC)
-    assert (frame.ra, frame.dec) == (82.5, -5.4)
+    assert (frame.ra, frame.dec) == pytest.approx((82.5, -5.4))
     assert frame.driver_metadata["product_model"] == "Seestar S30 Plus"
     assert frame.driver_metadata["firmware"] == "9.75"
     assert frame.driver_metadata["wcs"] == "device"
