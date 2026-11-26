@@ -1,3 +1,4 @@
+import socket
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -232,7 +233,7 @@ def test_park_waits_for_home_and_disconnect() -> None:
     control.set_exposure(10)
     control.park()
     control.disconnect()
-    assert _names(ns) == ["open", "exposure", "goto", "close_connections"]
+    assert _names(ns) == ["open", "set_setting", "goto", "close_connections"]
     (park,) = [c for c in ns.calls if c[0] == "goto"]
     assert park[1] == ("park",)
     assert park[2]["verbose"] is False
@@ -275,3 +276,38 @@ def test_abort_stops_whole_view() -> None:
     ns = _fake()
     _control(ns).abort()
     assert ns.calls[-1] == ("iscope_stop_view", (), {})
+
+
+def test_set_exposure_omits_expert_mode() -> None:
+    # Firmware 9.75 rejects seestarpy's ui.exposure, which adds
+    # expert_mode=True, with code 109 "unexpected param".
+    ns = _fake()
+    _control(ns).set_exposure(10)
+    assert ("set_setting", (), {"exp_ms": {"stack_l": 10000}}) in ns.calls
+    assert "exposure" not in _names(ns)
+
+
+def test_connect_resolves_hostname(monkeypatch: pytest.MonkeyPatch) -> None:
+    # seestarpy only accepts IP addresses; a hostname silently sends nothing.
+    resolved: list[str] = []
+
+    def fake_resolve(host: str) -> str:
+        resolved.append(host)
+        return "192.168.248.55"
+
+    monkeypatch.setattr(socket, "gethostbyname", fake_resolve)
+    ns = _fake()
+    _control(ns).connect("seestar.example.net", None)
+    assert resolved == ["seestar.example.net"]
+    assert ns.connection.DEFAULT_IP == "192.168.248.55"
+
+
+def test_connect_unresolvable_host_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail(host: str) -> str:
+        raise OSError("nodename nor servname provided")
+
+    monkeypatch.setattr(socket, "gethostbyname", fail)
+    with pytest.raises(SeestarControlError, match=r"seestar\.example\.net"):
+        _control(_fake()).connect("seestar.example.net", None)

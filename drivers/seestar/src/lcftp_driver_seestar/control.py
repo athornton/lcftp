@@ -10,6 +10,7 @@ import importlib
 import math
 import re
 import shutil
+import socket
 import tempfile
 from pathlib import Path
 from typing import Any, Literal, Protocol
@@ -216,11 +217,24 @@ class SeestarPyControl:
                 raise SeestarControlError(msg)
         return response
 
+    @staticmethod
+    def _resolve(host: str) -> str:
+        """Return the IPv4 address of ``host``.
+
+        seestarpy accepts only IP addresses: given a hostname it sends
+        nothing at all for most commands.
+        """
+        try:
+            return socket.gethostbyname(host)
+        except OSError as e:
+            msg = f"Cannot resolve Seestar host {host}: {e}"
+            raise SeestarControlError(msg) from e
+
     def connect(self, host: str | None, key_path: Path | None) -> DeviceInfo:
         """Connect and identify the telescope."""
         ssp = self._ssp
         if host:
-            ssp.connection.DEFAULT_IP = host
+            ssp.connection.DEFAULT_IP = self._resolve(host)
         if key_path is not None:
             self._do("set_key_path", ssp.auth.set_key_path, str(key_path))
         has_key = bool(ssp.auth.KEY_PATH) or key_path is not None
@@ -298,7 +312,13 @@ class SeestarPyControl:
 
     def set_exposure(self, seconds: int) -> None:
         """Set the sub-frame exposure time."""
-        self._rpc("set exposure", self._ssp.ui.exposure, seconds)
+        # Not ui.exposure: it adds expert_mode=True, which firmware 9.75
+        # rejects with code 109 "unexpected param".
+        self._rpc(
+            "set exposure",
+            self._ssp.raw.set_setting,
+            exp_ms={"stack_l": seconds * 1000},
+        )
 
     def set_save_subframes(self, *, enabled: bool) -> None:
         """Keep each accepted sub-frame."""
