@@ -234,7 +234,12 @@ class SeestarPyControl:
         """Connect and identify the telescope."""
         ssp = self._ssp
         if host:
-            ssp.connection.DEFAULT_IP = self._resolve(host)
+            ip = self._resolve(host)
+            ssp.connection.DEFAULT_IP = ip
+            # Nested seestarpy calls (listing a folder, say) accept only
+            # addresses in AVAILABLE_IPS, which UDP discovery fills.  The
+            # scope does not always answer discovery, so register it here.
+            ssp.connection.AVAILABLE_IPS[host] = ip
         if key_path is not None:
             self._do("set_key_path", ssp.auth.set_key_path, str(key_path))
         has_key = bool(ssp.auth.KEY_PATH) or key_path is not None

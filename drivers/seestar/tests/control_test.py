@@ -37,7 +37,9 @@ def _fake(**overrides: Any) -> SimpleNamespace:
 
     ns = SimpleNamespace(calls=calls)
     ns.connection = SimpleNamespace(
-        DEFAULT_IP="10.0.0.1", close_connections=rec("close_connections")
+        DEFAULT_IP="10.0.0.1",
+        AVAILABLE_IPS={},
+        close_connections=rec("close_connections"),
     )
     ns.auth = SimpleNamespace(
         KEY_PATH=overrides.get("KEY_PATH", "/keys/seestar.pem"),
@@ -300,6 +302,18 @@ def test_connect_resolves_hostname(monkeypatch: pytest.MonkeyPatch) -> None:
     _control(ns).connect("seestar.example.net", None)
     assert resolved == ["seestar.example.net"]
     assert ns.connection.DEFAULT_IP == "192.168.248.55"
+
+
+def test_connect_registers_address_without_discovery(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # seestarpy's nested calls (e.g. listing a folder) only accept an
+    # address in AVAILABLE_IPS, which UDP discovery fills.  When discovery
+    # gets no answer the driver must register the address itself.
+    monkeypatch.setattr(socket, "gethostbyname", lambda host: "192.168.248.55")
+    ns = _fake()
+    _control(ns).connect("seestar.example.net", None)
+    assert "192.168.248.55" in ns.connection.AVAILABLE_IPS.values()
 
 
 def test_connect_unresolvable_host_fails(
